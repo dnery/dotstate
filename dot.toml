@@ -1,0 +1,27 @@
+[repo]
+# Remote git URL of this repo.
+url = "https://github.com/dnery/dotstate"
+# Where to clone to / operate from on a machine.
+path = "~/Projects/dotstate"
+branch = "master"
+
+[sync]
+interval_minutes = 30
+enable_idle = true
+enable_shutdown = true
+
+[tools]
+# If empty, rely on PATH.
+git = ""
+chezmoi = ""
+op = ""
+
+[chex]
+# Directory inside repo that contains chezmoi source state.
+source_dir = "home"
+
+[wsl]
+enable = true
+distro_name = "nixos"
+# Flake ref to apply inside WSL (placeholder).
+flake_ref = ".#wsl"

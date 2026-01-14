@@ -1,0 +1,28 @@
+# Local cache / private outputs
+state/private/
+state/cache/
+**/*.tmp
+**/*.bak
+
+# Go build artifacts
+/bin/
+/dist/
+*.exe
+*.out
+
+# OS junk
+.DS_Store
+Thumbs.db
+*.log
+*.bak
+*.tmp
+*.swp
+*~
+
+# IDE and editor generated files
+.idea/
+*.sublime-*
+
+# Local environment files
+.envrc.local
+.envrc.*.local
