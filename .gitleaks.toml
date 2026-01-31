@@ -1,0 +1,62 @@
+# Gitleaks configuration for dotstate
+# Run with: gitleaks detect --source . --config .gitleaks.toml
+# Install: go install github.com/gitleaks/gitleaks/v8@latest
+
+title = "dotstate gitleaks config"
+
+[extend]
+# Use the default gitleaks rules as a base
+useDefault = true
+
+# Paths to ignore (these are intentionally private or test data)
+[allowlist]
+paths = [
+    '''state/private/.*''',
+    '''state/cache/.*''',
+    '''\.git/.*''',
+    '''vendor/.*''',
+    '''testdata/.*secrets.*''',
+]
+
+# Additional rules specific to dotstate patterns
+[[rules]]
+id = "1password-service-account-token"
+description = "1Password Service Account Token"
+regex = '''ops_[A-Za-z0-9_-]{40,}'''
+tags = ["secret", "1password"]
+
+[[rules]]
+id = "1password-connect-token"
+description = "1Password Connect Token"
+regex = '''eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+'''
+tags = ["secret", "1password", "jwt"]
+
+[[rules]]
+id = "age-secret-key"
+description = "age encryption secret key"
+regex = '''AGE-SECRET-KEY-[A-Z0-9]{59}'''
+tags = ["secret", "age", "encryption"]
+
+[[rules]]
+id = "ssh-private-key-content"
+description = "SSH Private Key content"
+regex = '''-----BEGIN (RSA|DSA|EC|OPENSSH) PRIVATE KEY-----'''
+tags = ["secret", "ssh"]
+
+[[rules]]
+id = "gpg-private-key"
+description = "GPG Private Key"
+regex = '''-----BEGIN PGP PRIVATE KEY BLOCK-----'''
+tags = ["secret", "gpg"]
+
+# Allowlist for known safe patterns
+[[rules.allowlist]]
+regexes = [
+    # Example/placeholder tokens in documentation
+    '''ops_EXAMPLE[A-Za-z0-9_-]*''',
+    '''YOUR_TOKEN_HERE''',
+    # Test fixtures with obvious fake values
+    '''test[_-]?secret''',
+    '''fake[_-]?key''',
+    '''dummy[_-]?token''',
+]

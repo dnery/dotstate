@@ -7,8 +7,10 @@ state/cache/
 # Go build artifacts
 /bin/
 /dist/
+/coverage/
 *.exe
 *.out
+*.test
 
 # OS junk
 .DS_Store
