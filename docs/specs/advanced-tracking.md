@@ -1,6 +1,8 @@
-# Non-Trivial Configuration Tracking
+# Advanced Configuration Tracking
 
-This document covers configuration items that require special handling beyond simple file copying. These items are documented here for future implementation consideration.
+This document covers configuration items that require special handling beyond simple file copying. These are planned features for future implementation.
+
+> **Related:** For sub-repository detection (already implemented), see [discover.md](discover.md#sub-repository-handling).
 
 ---
 
@@ -67,33 +69,13 @@ export_extensions = true
 
 ---
 
-## Sub-Repository Tracking
+## Sub-Repository Apply Behavior
 
-### Challenge
+> **Note:** Sub-repository *detection* is implemented in Phase 2. See [discover.md](discover.md#sub-repository-handling) for details on how sub-repos are detected and tracked.
 
-Some configuration directories are their own git repositories (e.g., `~/.config/nvim` cloned from `user/nvim-config`). These should not be tracked as files, but as references.
+This section discusses how sub-repos should behave during `dot apply`.
 
-### Current Implementation
-
-The discover command detects sub-repositories and extracts:
-- Repository path relative to home
-- Remote URL (if available)
-- Current branch
-
-Sub-repos are tracked in `state/subrepos.toml`:
-
-```toml
-[[subrepo]]
-path = "~/.config/nvim"
-url = "https://github.com/user/nvim-config"
-branch = "main"
-
-[[subrepo]]
-path = "~/.emacs.d"
-url = "https://github.com/user/emacs-config"
-```
-
-### Handling During Apply
+### Options for Apply Behavior
 
 **Option A: Clone if missing, skip if present**
 - Simplest approach
