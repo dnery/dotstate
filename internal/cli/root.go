@@ -13,6 +13,7 @@ import (
 
 	"github.com/dnery/dotstate/dot/internal/chez"
 	"github.com/dnery/dotstate/dot/internal/config"
+	"github.com/dnery/dotstate/dot/internal/discover"
 	doterrors "github.com/dnery/dotstate/dot/internal/errors"
 	"github.com/dnery/dotstate/dot/internal/gitx"
 	"github.com/dnery/dotstate/dot/internal/logging"
@@ -92,6 +93,7 @@ func Execute() int {
 	root.AddCommand(cmdApply(a))
 	root.AddCommand(cmdCapture(a))
 	root.AddCommand(cmdSync(a))
+	root.AddCommand(cmdDiscover(a))
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -401,4 +403,75 @@ func cmdSync(a *app) *cobra.Command {
 	})
 
 	return syncCmd
+}
+
+func cmdDiscover(a *app) *cobra.Command {
+	var (
+		autoYes     bool
+		dryRun      bool
+		noCommit    bool
+		deep        bool
+		reportOnly  bool
+		secretsMode string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "discover",
+		Short: "Discover and add configuration files",
+		Long: `Discover configuration files on this machine that are not yet tracked.
+
+This command scans common configuration locations, classifies files by
+likelihood of being useful, detects potential secrets, and lets you
+interactively select which files to add to the repository.
+
+Examples:
+  dot discover              # Interactive discovery
+  dot discover --yes        # Auto-accept recommended files
+  dot discover --report     # Show what would be discovered (no changes)
+  dot discover --deep       # Scan additional directories
+`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, _, err := a.loadConfig()
+			if err != nil {
+				return err
+			}
+
+			opts := discover.Options{
+				AutoYes:     autoYes,
+				DryRun:      dryRun,
+				NoCommit:    noCommit,
+				Deep:        deep,
+				ReportOnly:  reportOnly,
+				SecretsMode: secretsMode,
+			}
+
+			if a.logger != nil {
+				a.logger.Info("starting discovery",
+					"deep", deep,
+					"autoYes", autoYes,
+					"dryRun", dryRun,
+				)
+			}
+
+			disc, err := discover.NewDiscoverer(cfg, opts)
+			if err != nil {
+				return doterrors.Wrap(err, "init discover")
+			}
+
+			if err := disc.Run(context.Background(), opts); err != nil {
+				return doterrors.Wrap(err, "discover failed")
+			}
+
+			return nil
+		},
+	}
+
+	cmd.Flags().BoolVarP(&autoYes, "yes", "y", false, "Auto-accept recommended files without prompting")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be added without making changes")
+	cmd.Flags().BoolVar(&noCommit, "no-commit", false, "Skip the commit step")
+	cmd.Flags().BoolVar(&deep, "deep", false, "Scan additional directories (AppData, Library)")
+	cmd.Flags().BoolVar(&reportOnly, "report", false, "Print report only (no prompts, no changes)")
+	cmd.Flags().StringVar(&secretsMode, "secrets", "error", "How to handle secrets: error, warning, ignore")
+
+	return cmd
 }
