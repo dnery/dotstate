@@ -2,10 +2,12 @@
 
 This doc defines the **invariants**, **guardrails**, and the current **contract** of the dotstate system.
 
+> **Implementation Status:** Phases 0-2 complete. Core plumbing and discover command are functional.
+
 The goal of dotstate is to make your personal OS setups reproducible and portable across:
 
+- macOS (Apple Silicon) — **primary target**
 - Windows 11 Pro (native)
-- macOS (Apple Silicon)
 - Arch-family Linux (CachyOS)
 - WSL (NixOS‑WSL) as a first-class optional target
 
@@ -123,7 +125,7 @@ Use this class for:
   - `enable_shutdown`: bool
 
 - `[tools]`
-  - paths to `git`, `chezmoi`, `op` (empty means “use PATH”)
+  - paths to `git`, `chezmoi`, `op` (empty means "use PATH")
 
 - `[chex]`
   - `source_dir`: directory inside repo used as Chezmoi source (default `home`)
@@ -133,9 +135,29 @@ Use this class for:
   - `distro_name`: e.g. `nixos`
   - `flake_ref`: flake reference to apply inside WSL
 
+### Environment variable overrides (implemented)
+
+Configuration can be overridden via environment variables:
+
+| Variable | Overrides |
+|----------|-----------|
+| `DOTSTATE_REPO_URL` | `repo.url` |
+| `DOTSTATE_REPO_PATH` | `repo.path` |
+| `DOTSTATE_REPO_BRANCH` | `repo.branch` |
+
+### Configuration loading (implemented)
+
+1. Load defaults (platform-specific paths)
+2. Load `dot.toml` if present (overrides defaults)
+3. Apply environment variables (overrides config file)
+4. Validate required fields
+
 ---
 
 ## Core commands (contract)
+
+### `dot version`
+Shows version information including commit hash, build date, Go version, and platform.
 
 ### `dot doctor`
 Checks prerequisites and provides actionable errors:
@@ -179,8 +201,31 @@ Flags:
 - `--no-apply`
 - `--no-push`
 
-### `dot discover`
-Baseline onboarding command. Spec is in `docs/discover.md`.
+### `dot discover` (implemented - Phase 2)
+Baseline onboarding command for discovering existing configurations.
+
+**Implemented flags:**
+- `--yes, -y` — Auto-accept recommended files without prompts
+- `--dry-run` — Show what would be added without actually adding
+- `--deep` — Scan additional directories (~/Library, %APPDATA%)
+- `--report` — Print classification report only
+
+**Classification categories:**
+- **Recommended** — High-confidence config files, preselected
+- **Maybe** — Potentially useful but uncertain
+- **Risky** — May contain secrets, requires explicit selection
+- **Ignored** — Caches, logs, browser data (excluded)
+
+**Secret detection:**
+- 30+ regex patterns for common secrets (API keys, tokens, private keys)
+- Integration with `chezmoi add --secrets=error` for additional protection
+
+**Sub-repository handling:**
+- Detects nested git repos (e.g., `~/.config/nvim`)
+- Tracks as references (URL + branch) rather than files
+- Manifest stored in `state/subrepos.toml`
+
+Full spec in `docs/discover.md`.
 
 ---
 
@@ -212,8 +257,47 @@ Details: `docs/wsl-nixos.md`
 
 ---
 
-## What’s explicitly out of scope (for now)
+## What's explicitly out of scope (for now)
 
 - Full Windows hardening / debloat module (planned, but not yet locked)
 - Full browser extension state automation (planned; likely hybrid of export/import + policy)
-- Cross-machine merge automation beyond “stop on conflict + notify”
+- Cross-machine merge automation beyond "stop on conflict + notify"
+
+---
+
+## Internal architecture (implemented)
+
+### Package structure
+
+| Package | Purpose |
+|---------|---------|
+| `internal/runner` | Interface-based command execution (`Runner` interface, `ExecRunner` impl) |
+| `internal/testutil` | Test helpers including `MockRunner` for unit testing |
+| `internal/config` | Configuration loading, defaults, validation, env overrides |
+| `internal/logging` | Structured logging via `slog` (stderr + JSON file) |
+| `internal/platform` | Cross-platform OS detection and XDG-compliant paths |
+| `internal/errors` | Custom error types with sysexits.h exit codes |
+| `internal/chez` | Chezmoi wrapper using Runner interface |
+| `internal/gitx` | Git operations wrapper |
+| `internal/discover` | Discovery, classification, secret detection, sub-repo handling |
+
+### Exit codes
+
+Following sysexits.h conventions:
+
+| Code | Constant | Meaning |
+|------|----------|---------|
+| 0 | `ExitOK` | Success |
+| 1 | `ExitError` | Generic error |
+| 64 | `ExitUsage` | Bad command-line arguments |
+| 65 | `ExitDataErr` | Invalid input data |
+| 69 | `ExitUnavailable` | Service/dependency unavailable |
+| 75 | `ExitConflict` | Conflict detected |
+| 78 | `ExitConfig` | Configuration error |
+
+### Testing approach
+
+- Interface-based design enables mocking external commands
+- `MockRunner` allows testing git/chezmoi operations without real tools
+- Unit tests for all core packages
+- `make test` runs all tests with race detection and shuffle

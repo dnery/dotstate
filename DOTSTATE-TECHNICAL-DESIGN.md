@@ -1,9 +1,11 @@
 # dotstate technical design and roadmap (source of truth)
 
-**Status:** Living document (update as implementation evolves)  
-**Last updated:** 2026-01-19  
-**Audience:** You (developer/operator) working primarily from the terminal  
+**Status:** Living document (update as implementation evolves)
+**Last updated:** 2026-02-01
+**Audience:** You (developer/operator) working primarily from the terminal
 **Repo:** `dnery/dotstate` (this doc should live at `docs/technical-design.md` or similar)
+
+> **Implementation Status:** Phase 0, 1, and 2 are complete. The CLI has core plumbing (runner, config, logging, platform, errors) and the discover command for baseline onboarding.
 
 ---
 
@@ -359,34 +361,93 @@ Templates are reserved for:
 
 The CLI is intentionally small and composable. Each command must be scriptable and have machine-readable exit codes.
 
-### 13.1 MVP commands
-- `dot doctor` — validate dependencies, repo state, auth, env
-- `dot apply` — apply desired state (files + modules)
-- `dot capture` — capture live edits into repo (no network operations)
-- `dot sync` — full transaction (capture/commit/pull/apply/push)
-- `dot sync now` — run immediately
-- `dot discover` — baseline discovery & add (interactive by default)
+### 13.1 Implemented commands
+
+**`dot version`**
+- Shows version, commit, build date, Go version, and platform
+
+**`dot doctor`**
+- Validates dependencies, repo state, auth, env
+- Checks: git, chezmoi, op (optional), repo root, config file
+
+**`dot bootstrap --repo <url>`**
+- Clones repo to configured path
+- Flags: `--repo`, `--branch`, `--path`
+
+**`dot apply`**
+- Applies desired state via `chezmoi apply`
+
+**`dot capture`**
+- Captures live edits via `chezmoi re-add`
+
+**`dot sync`**
+- Full transaction: capture → commit → pull/rebase → apply → push
+
+**`dot discover`** *(Phase 2 - implemented)*
+- Scans system for untracked config files
+- Classifies as Recommended/Maybe/Risky/Ignored
+- Detects secrets and nested git repositories (sub-repos)
+- Flags:
+  - `--yes, -y` — Auto-accept recommended files
+  - `--dry-run` — Show what would be added without adding
+  - `--deep` — Scan additional directories (Library, AppData)
+  - `--report` — Print report only, no interactive prompts
+
+### 13.2 Planned commands
 - `dot schedule install|status|remove`
 - `dot wsl install|apply|status` (when WSL phase begins)
 
-### 13.2 Exit codes (recommended)
-- `0` success
-- `1` generic failure
-- `2` partial success requiring manual step
-- `3` conflict detected (git/chezmoi conflict)
-- `4` privileges required / denied
-- `5` missing dependency
+### 13.3 Global flags
+- `--verbose, -v` — Enable verbose output
+- `--help, -h` — Show help
+
+### 13.4 Exit codes (implemented)
+
+Following sysexits.h conventions:
+
+| Code | Constant | Meaning |
+|------|----------|---------|
+| 0 | `ExitOK` | Success |
+| 1 | `ExitError` | Generic error |
+| 64 | `ExitUsage` | Usage error (bad arguments) |
+| 65 | `ExitDataErr` | Data error (invalid input) |
+| 69 | `ExitUnavailable` | Service unavailable (dependency missing) |
+| 75 | `ExitConflict` | Conflict detected (git/chezmoi conflict) |
+| 78 | `ExitConfig` | Configuration error |
 
 ---
 
 ## 14. Logging and observability (EDIT AS YOU GO)
 
-- All commands support:
-  - `--verbose`
-  - `--json` output mode (later; for automation)
-- Logs go to:
-  - `state/logs/` (gitignored)
-- Never log secrets.
+### 14.1 Implementation (Phase 1)
+
+Logging uses Go's `slog` package with dual output:
+
+- **Stderr**: Human-readable text, controlled by `--verbose` flag
+- **JSON file**: Structured logs at `state/logs/dot.log` (gitignored)
+
+The `internal/logging` package provides:
+
+```go
+type Logger struct {
+    slog    *slog.Logger
+    file    *os.File
+    verbose bool
+}
+
+// Usage
+log.Info("operation complete", "files", count)
+log.Debug("detailed info", "path", path)  // Only shown with --verbose
+log.Error("failed", "error", err)
+```
+
+### 14.2 Principles
+
+- All commands support `--verbose` for detailed output
+- `--json` output mode planned for automation
+- Logs go to `state/logs/` (gitignored)
+- Never log secrets or sensitive values
+- Structured fields for machine parsing
 
 ---
 
@@ -394,7 +455,7 @@ The CLI is intentionally small and composable. Each command must be scriptable a
 
 Each phase has deliverables + acceptance criteria.
 
-### Phase 0 — Repo hygiene + docs (NOW)
+### Phase 0 — Repo hygiene + docs ✅ COMPLETE
 **Deliverables**
 - This technical design doc is in repo.
 - Spec index is current.
@@ -405,35 +466,55 @@ Each phase has deliverables + acceptance criteria.
 
 ---
 
-### Phase 1 — Core plumbing: runners + configuration
-**Implement**
-- `dot.toml` config load + defaults
-- repo root detection
-- command runner abstraction:
-  - execute external processes (chezmoi, git, op) with consistent error handling
-- path canonicalization per OS
-- structured logging
+### Phase 1 — Core plumbing: runners + configuration ✅ COMPLETE
+**Implemented**
+- `internal/runner`: Interface-based command execution with `Runner` interface and `ExecRunner` implementation. Supports timeouts, captures stdout/stderr, returns structured `CmdResult`.
+- `internal/testutil`: Test helpers including `MockRunner` for unit testing command execution.
+- `internal/config`: Configuration loading from `dot.toml` with defaults, validation, and environment variable overrides (`DOTSTATE_REPO_URL`, `DOTSTATE_REPO_PATH`, `DOTSTATE_REPO_BRANCH`).
+- `internal/logging`: Structured logging via `slog` with dual output (stderr text + JSON file).
+- `internal/platform`: Cross-platform OS detection and XDG-compliant path handling.
+- `internal/errors`: Custom error types with sysexits.h-compliant exit codes.
+- `internal/chez`: Chezmoi wrapper using Runner interface.
+- `internal/gitx`: Git operations wrapper.
+- `.gitleaks.toml`: Secret scanning configuration.
+- `Makefile`: Enhanced with `test`, `test-cover`, `lint`, `secrets` targets.
 
-**Acceptance criteria**
-- `dot doctor` verifies:
-  - git present
-  - chezmoi present or installable
-  - op present (optional) and can run `op --version`
+**Acceptance criteria** ✅
+- `dot doctor` verifies git, chezmoi, op presence
+- All packages have unit tests
+- Interface-based design enables testing without external dependencies
 
 ---
 
-### Phase 2 — `dot discover` v0 (report + non-interactive accept)
-**Implement**
-- `dot discover --no-tui` report per spec
-- curated candidates (Terminal settings, PS profile, Zed)
-- `--accept recommended` to add + commit
-- conservative ignore rules and size cap
-- adds via `chezmoi add --secrets=error`
+### Phase 2 — `dot discover` v0 (report + auto-accept) ✅ COMPLETE
+**Implemented**
+- `internal/discover/scanner.go`: Scans common config locations (`~/.config`, `~/Library`, `%APPDATA%`, etc.)
+- `internal/discover/classifier.go`: Classifies files as Recommended/Maybe/Risky/Ignored based on:
+  - File extension (config-ish: .json, .toml, .yaml, etc.)
+  - Known config names (settings.json, starship.toml, etc.)
+  - Path patterns (risky: tokens, secrets, private keys)
+  - File size (>2MB demoted to Maybe or excluded)
+- `internal/discover/secrets.go`: 30+ regex patterns for detecting secrets (AWS keys, GitHub tokens, private keys, etc.)
+- `internal/discover/subrepo.go`: Detects nested git repositories and extracts remote URL/branch for reference tracking
+- `internal/discover/prompt.go`: Interactive selection with `--yes` flag for automation
+- `internal/discover/discoverer.go`: Main orchestrator combining all components
 
-**Acceptance criteria**
-- On macOS and Windows:
-  - `dot discover --no-tui` outputs reasonable candidates
-  - `dot discover --accept recommended` adds and commits without pulling in caches
+**CLI flags:**
+- `--yes, -y`: Auto-accept recommended files (no prompts)
+- `--dry-run`: Show what would be added without adding
+- `--deep`: Scan additional directories (Library, AppData)
+- `--report`: Print report only, no interactive prompts
+
+**Key decisions:**
+- Sub-repos tracked as references (URL + branch) in `state/subrepos.toml`, not as files
+- Secret detection uses both regex pre-scan AND `chezmoi add --secrets=error`
+- Interactive by default, `--yes` for headless/automation use
+
+**Acceptance criteria** ✅
+- `dot discover --report` outputs classified candidates
+- `dot discover --yes` adds recommended files and commits
+- Sub-repos detected and excluded from file tracking
+- Secret-bearing files flagged as Risky
 
 ---
 
@@ -593,38 +674,60 @@ Each phase has deliverables + acceptance criteria.
 
 ## 16. Roadmap: open decisions and missing strategies
 
-This section lists what is intentionally not fully decided yet.
+This section lists what is intentionally not fully decided yet, with status updates.
 
 ### 16.1 Notifications channel
 - Pushcut vs Telegram vs both
 - Message format, rate limiting, secrets handling
+- **Status:** Open (Phase 13)
 
 ### 16.2 Exact Windows hardening policy list
 - Need a curated, versioned policy/registry set
 - Must be tested against gaming requirements
+- **Status:** Open (Phase 11)
 
 ### 16.3 Browser extension automation limits
 - For each extension (uBO, Sidebery, Stylus, Violentmonkey, SponsorBlock):
   - determine best export/import format
   - determine which settings are reliably restorable
   - decide what stays manual
+- **Status:** Documented in `docs/non-trivial-tracking.md`, implementation deferred (Phase 12)
 
-### 16.4 Secrets boundary enforcement
-- Decide whether to add:
-  - pre-commit secret scanning
-  - CI secret scanning
-- Decide the default behavior when `chezmoi add --secrets=error` does not catch a leak.
+### 16.4 Secrets boundary enforcement ✅ DECIDED
+- **Decision:** Use BOTH pre-commit secret scanning AND runtime detection:
+  1. `.gitleaks.toml` configuration for pre-commit/CI scanning
+  2. Built-in regex patterns in `internal/discover/secrets.go` for runtime detection
+  3. `chezmoi add --secrets=error` as final guardrail
+- Files with detected secrets are classified as "Risky" and require explicit selection
+- **Status:** Implemented in Phase 1 and 2
 
-### 16.5 Chezmoi integration approach
-- Whether `dot` installs and pins a specific Chezmoi version (recommended),
-  or requires user-managed installation.
+### 16.5 Chezmoi integration approach ✅ DECIDED
+- **Decision:** Currently requires user-managed installation; auto-install planned for future
+- `dot doctor` checks for chezmoi presence
+- Future: `dot bootstrap` will install chezmoi if missing (platform-specific methods)
+- **Status:** Partial implementation, auto-install deferred
 
 ### 16.6 NixOS-WSL flake design
 - Decide whether flake lives inside dotstate repo or as a separate repo/submodule.
 - Decide whether WSL dotfiles are shared with CachyOS or separate variant sets.
+- **Status:** Open (Phase 9)
 
 ### 16.7 Package capture strategy for CachyOS
 - How to represent AUR packages (manifest format) and which helper to assume.
+- **Status:** Open (Phase 10)
+
+### 16.8 Sub-repository handling ✅ DECIDED
+- **Decision:** Track nested git repos as references, not files
+- Manifest stored in `state/subrepos.toml` with path, URL, and branch
+- On apply: clone if missing, skip if present (user manages updates)
+- Future: `dot subrepo status` command to check all sub-repos
+- **Status:** Detection implemented in Phase 2; apply/clone deferred to Phase 4
+
+### 16.9 Platform priority ✅ DECIDED
+- **Decision:** macOS first → Windows 11 → CachyOS/Arch Linux
+- Development and testing prioritizes macOS (Apple Silicon)
+- Windows and Linux support follows
+- **Status:** Documented, informing all implementation decisions
 
 ---
 
@@ -633,11 +736,21 @@ This section lists what is intentionally not fully decided yet.
 These docs are normative for their feature areas:
 
 - `docs/discover.md` — discovery roots, filtering, scoring, UI contract
+- `docs/non-trivial-tracking.md` — handling Firefox, sub-repos, macOS defaults, Windows registry, browser extensions
 - `docs/sync.md` — sync transaction details and failure modes
 - `docs/scheduling.md` — automation strategy per OS
 - `docs/secrets-1password.md` — secret model and patterns
 - `docs/bootstrap-*.md` — bootstrap procedures per OS
 - `docs/wsl-nixos.md` — WSL target specifics
+
+### Implementation references
+
+- `internal/runner/runner.go` — Command execution interface
+- `internal/config/config.go` — Configuration loading and validation
+- `internal/logging/logging.go` — Structured logging
+- `internal/platform/platform.go` — OS detection and paths
+- `internal/errors/errors.go` — Error types and exit codes
+- `internal/discover/*.go` — Discovery implementation
 
 ---
 
