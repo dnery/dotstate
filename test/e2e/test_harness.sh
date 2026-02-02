@@ -2,9 +2,76 @@
 # dotstate end-to-end test harness
 # This script creates a sandbox environment and tests dotstate functionality
 #
-# USAGE: ./test_harness.sh [path-to-dot-binary]
+# USAGE:
+#   ./test_harness.sh [path-to-dot-binary]           # Run tests only
+#   ./test_harness.sh --record [path-to-dot-binary]  # Record and upload to asciinema
+#
+# OPTIONS:
+#   --record    Record the test run with asciinema and upload to asciinema.org
+#   --no-delay  Skip the 1-second delays between steps (faster for CI)
 
 set -e
+
+# Parse arguments
+RECORD_MODE=false
+NO_DELAY=false
+DOT_BIN=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --record)
+            RECORD_MODE=true
+            shift
+            ;;
+        --no-delay)
+            NO_DELAY=true
+            shift
+            ;;
+        *)
+            DOT_BIN="$1"
+            shift
+            ;;
+    esac
+done
+
+# Default binary path
+DOT_BIN="${DOT_BIN:-./bin/dot}"
+
+# If recording, re-execute self under asciinema
+if [ "$RECORD_MODE" = true ] && [ -z "$ASCIINEMA_REC" ]; then
+    CAST_FILE="/tmp/dotstate-e2e-$(date +%Y%m%d-%H%M%S).cast"
+    echo "Recording to: $CAST_FILE"
+    export ASCIINEMA_REC=1
+    export GIT_PAGER=cat  # Disable pager for clean recording
+
+    asciinema rec --stdin \
+        --title "dotstate E2E Test - $(date +%Y-%m-%d)" \
+        --command "$0 --no-delay $DOT_BIN" \
+        --overwrite \
+        "$CAST_FILE"
+
+    echo ""
+    echo "Recording complete: $CAST_FILE"
+    echo ""
+
+    # Fix the env field for upload (asciinema.org requires string values)
+    echo "Fixing recording for upload..."
+    FIXED_CAST="/tmp/dotstate-e2e-fixed.cast"
+    head -1 "$CAST_FILE" | python3 -c "
+import json, sys
+data = json.loads(sys.stdin.read())
+if 'env' in data:
+    data['env'] = {k: str(v) if v is not None else '' for k, v in data['env'].items()}
+print(json.dumps(data))
+" > "$FIXED_CAST.header"
+    tail -n +2 "$CAST_FILE" >> "$FIXED_CAST.header"
+    mv "$FIXED_CAST.header" "$FIXED_CAST"
+
+    echo "Uploading to asciinema.org..."
+    asciinema upload "$FIXED_CAST" || echo "Upload failed - recording saved locally"
+
+    exit 0
+fi
 
 # Colors for output
 RED='\033[0;31m'
@@ -13,11 +80,17 @@ YELLOW='\033[0;33m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
+# Delay function (skipped with --no-delay)
+delay() {
+    if [ "$NO_DELAY" = false ]; then
+        sleep 1
+    fi
+}
+
 # Test directories
 export TEST_BASE="/tmp/dotstate-e2e-test-$$"
 export FAKE_HOME="${TEST_BASE}/fake_home"
 export DOTSTATE_REPO="${TEST_BASE}/dotstate_repo"
-export DOT_BIN="${1:-/home/user/dotstate/bin/dot}"
 
 # Bug tracking
 BUGS_FOUND=()
@@ -29,9 +102,18 @@ log_bug() {
 
 # Ensure we have the binary
 if [ ! -x "$DOT_BIN" ]; then
-    echo -e "${RED}Error: dot binary not found at $DOT_BIN${NC}"
-    exit 1
+    # Try relative to script location
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    DOT_BIN="$SCRIPT_DIR/../../bin/dot"
+    if [ ! -x "$DOT_BIN" ]; then
+        echo -e "${RED}Error: dot binary not found at $DOT_BIN${NC}"
+        echo "Build it first with: make build-local"
+        exit 1
+    fi
 fi
+
+# Get absolute path
+DOT_BIN="$(cd "$(dirname "$DOT_BIN")" && pwd)/$(basename "$DOT_BIN")"
 
 echo -e "${CYAN}========================================${NC}"
 echo -e "${CYAN}dotstate E2E Test Harness${NC}"
@@ -42,6 +124,7 @@ echo -e "${YELLOW}Fake home: ${FAKE_HOME}${NC}"
 echo -e "${YELLOW}Dotstate repo: ${DOTSTATE_REPO}${NC}"
 echo -e "${YELLOW}Binary: ${DOT_BIN}${NC}"
 echo ""
+delay
 
 # Cleanup function
 cleanup() {
@@ -59,6 +142,7 @@ echo -e "${CYAN}[Step 1] Creating test environment...${NC}"
 mkdir -p "$FAKE_HOME"
 mkdir -p "$DOTSTATE_REPO/home"
 mkdir -p "$DOTSTATE_REPO/state"
+delay
 
 # Step 2: Create mock home environment with config files
 echo -e "${CYAN}[Step 2] Creating mock home environment with config files...${NC}"
@@ -164,6 +248,7 @@ find "$FAKE_HOME" -type f | sort | while read f; do
     echo "  $f ($size bytes)"
 done
 echo ""
+delay
 
 # Step 3: Initialize dotstate repo
 echo -e "${CYAN}[Step 3] Initializing dotstate repository...${NC}"
@@ -204,6 +289,7 @@ git commit -m "Initial dotstate repo setup"
 
 echo -e "${GREEN}Repository initialized${NC}"
 echo ""
+delay
 
 # Step 4: Initialize chezmoi with our fake home as target
 echo -e "${CYAN}[Step 4] Setting up environment...${NC}"
@@ -217,22 +303,26 @@ echo "Environment:"
 echo "  HOME=$HOME"
 echo "  XDG_CONFIG_HOME=$XDG_CONFIG_HOME"
 echo ""
+delay
 
 # Step 5: Test dot doctor
 echo -e "${CYAN}[Step 5] Running 'dot doctor'...${NC}"
 cd "$DOTSTATE_REPO"
 "$DOT_BIN" doctor || true
 echo ""
+delay
 
 # Step 6: Test dot discover --report
 echo -e "${CYAN}[Step 6] Running 'dot discover --report' to see what would be found...${NC}"
 "$DOT_BIN" discover --report || true
 echo ""
+delay
 
 # Step 7: Run dot discover with --yes to auto-accept
 echo -e "${CYAN}[Step 7] Running 'dot discover --yes --no-commit' to add recommended files...${NC}"
 "$DOT_BIN" discover --yes --no-commit 2>&1 || true
 echo ""
+delay
 
 # Step 8: Check what was added to the repo
 echo -e "${CYAN}[Step 8] Checking files added to dotstate repo (home/ directory)...${NC}"
@@ -249,6 +339,7 @@ else
     echo -e "${RED}  home/ directory does not exist${NC}"
 fi
 echo ""
+delay
 
 # Step 9: Check if chezmoi added files to ITS default location instead
 echo -e "${CYAN}[Step 9] Checking chezmoi's default source location...${NC}"
@@ -264,6 +355,7 @@ else
     echo "Chezmoi default source does not exist (this is expected if properly configured)"
 fi
 echo ""
+delay
 
 # Step 10: Verify files are copies, not symlinks
 echo -e "${CYAN}[Step 10] Verifying copy semantics (not symlinks)...${NC}"
@@ -292,6 +384,7 @@ else
     log_bug "Found symlinks instead of copies"
 fi
 echo ""
+delay
 
 # Step 11: Commit whatever was added
 echo -e "${CYAN}[Step 11] Committing any added files...${NC}"
@@ -304,6 +397,7 @@ else
     git commit -m "Add discovered config files" || echo "Commit failed"
 fi
 echo ""
+delay
 
 # Step 12: Make a change to a tracked file (destination)
 echo -e "${CYAN}[Step 12] Modifying a tracked file at destination...${NC}"
@@ -315,11 +409,13 @@ else
     echo -e "${YELLOW}No .gitconfig found to modify${NC}"
 fi
 echo ""
+delay
 
 # Step 13: Test if the system can detect the change
 echo -e "${CYAN}[Step 13] Testing change detection with 'dot capture'...${NC}"
 "$DOT_BIN" capture 2>&1 || true
 echo ""
+delay
 
 # Step 14: Check if the change was captured
 echo -e "${CYAN}[Step 14] Checking if change was captured in repo...${NC}"
@@ -338,6 +434,7 @@ else
     git diff --staged --stat
 fi
 echo ""
+delay
 
 # Summary
 echo -e "${CYAN}========================================${NC}"
@@ -356,6 +453,9 @@ if [ ${#BUGS_FOUND[@]} -gt 0 ]; then
     for bug in "${BUGS_FOUND[@]}"; do
         echo -e "${RED}  - $bug${NC}"
     done
+    echo ""
+    echo -e "${YELLOW}See GitHub issues for details:${NC}"
+    echo "  https://github.com/dnery/dotstate/issues"
 else
     echo -e "${GREEN}No bugs found!${NC}"
 fi
