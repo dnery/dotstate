@@ -3,12 +3,15 @@ package discover
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/dnery/dotstate/dot/internal/chez"
 	"github.com/dnery/dotstate/dot/internal/config"
 	"github.com/dnery/dotstate/dot/internal/gitx"
 	"github.com/dnery/dotstate/dot/internal/platform"
 	"github.com/dnery/dotstate/dot/internal/runner"
+	toml "github.com/pelletier/go-toml/v2"
 )
 
 // Discoverer orchestrates the discovery process.
@@ -233,8 +236,6 @@ func (d *Discoverer) handleSubRepos(ctx context.Context, subRepos []*Candidate) 
 		return nil
 	}
 
-	// Write manifest to state/subrepos.toml
-	// For now, just print what we would do
 	fmt.Printf("\nSub-repository manifest (%d repos):\n", len(manifests))
 	for _, m := range manifests {
 		fmt.Printf("  [[subrepo]]\n")
@@ -246,7 +247,21 @@ func (d *Discoverer) handleSubRepos(ctx context.Context, subRepos []*Candidate) 
 		fmt.Println()
 	}
 
-	fmt.Println("Note: Sub-repo manifest will be saved to state/subrepos.toml")
+	manifest := SubReposManifest{SubRepos: manifests}
+	data, err := toml.Marshal(manifest)
+	if err != nil {
+		return fmt.Errorf("marshal sub-repo manifest: %w", err)
+	}
+
+	manifestPath := filepath.Join(d.cfg.StatePath(), "subrepos.toml")
+	if err := os.MkdirAll(filepath.Dir(manifestPath), 0o755); err != nil {
+		return fmt.Errorf("create state directory: %w", err)
+	}
+	if err := os.WriteFile(manifestPath, data, 0o644); err != nil {
+		return fmt.Errorf("write sub-repo manifest: %w", err)
+	}
+
+	fmt.Printf("Note: Sub-repo manifest saved to %s\n", manifestPath)
 	fmt.Println("      During 'dot apply', these repos will be cloned/updated.")
 
 	return nil
