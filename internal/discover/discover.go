@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/dnery/dotstate/dot/internal/platform"
 )
 
 // Category represents the classification of a discovered file.
@@ -122,6 +124,9 @@ type ScanOptions struct {
 
 	// Home is the user's home directory (for relative path calculation).
 	Home string
+
+	// Platform overrides the detected platform when set.
+	Platform *platform.Platform
 
 	// ManagedPaths are paths already managed by chezmoi (to exclude).
 	ManagedPaths map[string]bool

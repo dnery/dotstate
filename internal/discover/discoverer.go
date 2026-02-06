@@ -51,6 +51,9 @@ type Options struct {
 
 	// Roots overrides the default scan roots.
 	Roots []string
+
+	// Platform overrides the detected platform for discovery.
+	Platform *platform.Platform
 }
 
 // DefaultOptions returns default discovery options.
@@ -63,9 +66,13 @@ func DefaultOptions() Options {
 
 // NewDiscoverer creates a new discoverer.
 func NewDiscoverer(cfg *config.Config, opts Options) (*Discoverer, error) {
-	plat, err := platform.Current()
-	if err != nil {
-		return nil, fmt.Errorf("detect platform: %w", err)
+	plat := opts.Platform
+	if plat == nil {
+		var err error
+		plat, err = platform.Current()
+		if err != nil {
+			return nil, fmt.Errorf("detect platform: %w", err)
+		}
 	}
 
 	r := runner.New()
@@ -77,6 +84,7 @@ func NewDiscoverer(cfg *config.Config, opts Options) (*Discoverer, error) {
 		Home:          plat.Home,
 		ManagedPaths:  make(map[string]bool),
 		Roots:         opts.Roots,
+		Platform:      plat,
 	}
 
 	// Get managed paths from chezmoi to exclude
