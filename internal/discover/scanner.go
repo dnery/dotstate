@@ -63,7 +63,11 @@ func (s *Scanner) Scan(ctx context.Context) (*Result, error) {
 func (s *Scanner) defaultRoots() []string {
 	home := s.opts.Home
 	if home == "" {
-		home, _ = os.UserHomeDir()
+		if s.opts.Platform != nil && s.opts.Platform.Home != "" {
+			home = s.opts.Platform.Home
+		} else {
+			home, _ = os.UserHomeDir()
+		}
 	}
 
 	roots := []string{
@@ -93,8 +97,15 @@ func (s *Scanner) defaultRoots() []string {
 	}
 
 	// Platform-specific roots
-	plat, err := platform.Current()
-	if err == nil {
+	plat := s.opts.Platform
+	if plat == nil {
+		var err error
+		plat, err = platform.Current()
+		if err != nil {
+			return roots
+		}
+	}
+	if plat != nil {
 		switch plat.OS {
 		case platform.Darwin:
 			if s.opts.Deep {
