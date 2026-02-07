@@ -44,13 +44,24 @@ func (g *Git) EnsureCloned(ctx context.Context, repoURL, repoPath, branch string
 		return nil
 	}
 
-	if err := os.MkdirAll(repoPath, 0o755); err != nil {
+	if info, err := os.Stat(repoPath); err == nil {
+		if !info.IsDir() {
+			return fmt.Errorf("repo path exists and is not a directory: %s", repoPath)
+		}
+		empty, err := isDirEmpty(repoPath)
+		if err != nil {
+			return err
+		}
+		if !empty {
+			return fmt.Errorf("repo path exists but is not a git repo or empty directory: %s", repoPath)
+		}
+	} else if os.IsNotExist(err) {
+		if err := os.MkdirAll(filepath.Dir(repoPath), 0o755); err != nil {
+			return err
+		}
+	} else {
 		return err
 	}
-
-	// Clone into repoPath parent, because `git clone <url> <path>` requires parent exists.
-	// But we already created repoPath; remove it to avoid clone error.
-	_ = os.RemoveAll(repoPath)
 
 	args := []string{"clone", repoURL, repoPath}
 	if _, err := g.R.Run(ctx, "", g.Bin, args...); err != nil {
@@ -63,6 +74,14 @@ func (g *Git) EnsureCloned(ctx context.Context, repoURL, repoPath, branch string
 		}
 	}
 	return nil
+}
+
+func isDirEmpty(path string) (bool, error) {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return false, err
+	}
+	return len(entries) == 0, nil
 }
 
 // PorcelainStatus returns the git status in porcelain format.

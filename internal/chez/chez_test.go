@@ -41,19 +41,19 @@ func TestNew(t *testing.T) {
 func TestReAdd(t *testing.T) {
 	mock := testutil.NewMockRunner(t)
 	mock.OnCommandSuccess(
-		testutil.MatchExact("chezmoi", "re-add"),
+		testutil.MatchCommandPrefix("chezmoi", "--source", "/repo/home", "re-add"),
 		"",
 	)
 
 	c := New("chezmoi", mock)
 	ctx := context.Background()
 
-	err := c.ReAdd(ctx, "/repo")
+	err := c.ReAdd(ctx, "/repo", "home")
 	if err != nil {
 		t.Fatalf("ReAdd() error = %v", err)
 	}
 
-	mock.AssertCalled(testutil.MatchExact("chezmoi", "re-add"))
+	mock.AssertCalled(testutil.MatchCommandPrefix("chezmoi", "--source", "/repo/home", "re-add"))
 }
 
 func TestApply(t *testing.T) {
@@ -126,14 +126,14 @@ func TestApplyError(t *testing.T) {
 func TestAdd(t *testing.T) {
 	mock := testutil.NewMockRunner(t)
 	mock.OnCommandSuccess(
-		testutil.MatchCommandPrefix("chezmoi", "add"),
+		testutil.MatchCommandPrefix("chezmoi", "--source", "/repo/home", "add"),
 		"",
 	)
 
 	c := New("chezmoi", mock)
 	ctx := context.Background()
 
-	err := c.Add(ctx, "/repo", []string{"~/.gitconfig", "~/.zshrc"}, false)
+	err := c.Add(ctx, "/repo", "home", []string{"~/.gitconfig", "~/.zshrc"}, "ignore")
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -143,9 +143,9 @@ func TestAdd(t *testing.T) {
 		t.Fatalf("expected 1 call, got %d", len(calls))
 	}
 
-	// Should have add + 2 files = 3 args
-	if len(calls[0].Args) != 3 {
-		t.Errorf("args = %v, want 3 args", calls[0].Args)
+	// Should include --source path, add command, and files.
+	if len(calls[0].Args) != 5 {
+		t.Errorf("args = %v, want 5 args", calls[0].Args)
 	}
 }
 
@@ -156,7 +156,7 @@ func TestAddWithSecretsError(t *testing.T) {
 	c := New("chezmoi", mock)
 	ctx := context.Background()
 
-	err := c.Add(ctx, "/repo", []string{"~/.gitconfig"}, true)
+	err := c.Add(ctx, "/repo", "home", []string{"~/.gitconfig"}, "error")
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -166,7 +166,7 @@ func TestAddWithSecretsError(t *testing.T) {
 		t.Fatalf("expected 1 call, got %d", len(calls))
 	}
 
-	// Should include --secrets=error flag
+	// Should include --secrets=error flag.
 	call := calls[0]
 	foundFlag := false
 	for _, arg := range call.Args {
@@ -180,13 +180,51 @@ func TestAddWithSecretsError(t *testing.T) {
 	}
 }
 
+func TestAddWithSecretsWarning(t *testing.T) {
+	mock := testutil.NewMockRunner(t)
+	mock.SetFallback("", "", 0)
+
+	c := New("chezmoi", mock)
+	ctx := context.Background()
+
+	err := c.Add(ctx, "/repo", "home", []string{"~/.gitconfig"}, "warning")
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+
+	call := mock.Calls()[0]
+	foundFlag := false
+	for _, arg := range call.Args {
+		if arg == "--secrets=warning" {
+			foundFlag = true
+			break
+		}
+	}
+	if !foundFlag {
+		t.Errorf("Add() with warning mode should include --secrets=warning flag, got: %v", call.Args)
+	}
+}
+
+func TestAddInvalidSecretsMode(t *testing.T) {
+	mock := testutil.NewMockRunner(t)
+	c := New("chezmoi", mock)
+	ctx := context.Background()
+
+	err := c.Add(ctx, "/repo", "home", []string{"~/.gitconfig"}, "bad-mode")
+	if err == nil {
+		t.Fatal("expected error for invalid secrets mode")
+	}
+
+	mock.AssertCallCount(0)
+}
+
 func TestAddEmpty(t *testing.T) {
 	mock := testutil.NewMockRunner(t)
 	c := New("chezmoi", mock)
 	ctx := context.Background()
 
 	// Adding no files should do nothing
-	err := c.Add(ctx, "/repo", []string{}, false)
+	err := c.Add(ctx, "/repo", "home", []string{}, "ignore")
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}

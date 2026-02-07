@@ -30,8 +30,13 @@ func New(bin string, r runner.Runner) *Chezmoi {
 
 // ReAdd re-adds all managed files that differ in destination.
 // This is the core of the "edit real files normally" workflow.
-func (c *Chezmoi) ReAdd(ctx context.Context, repoPath string) error {
-	_, err := c.R.Run(ctx, repoPath, c.Bin, "re-add")
+func (c *Chezmoi) ReAdd(ctx context.Context, repoPath, sourceDir string) error {
+	args := []string{}
+	if sourceDir != "" {
+		args = append(args, "--source", filepath.Join(repoPath, sourceDir))
+	}
+	args = append(args, "re-add")
+	_, err := c.R.Run(ctx, repoPath, c.Bin, args...)
 	return err
 }
 
@@ -50,15 +55,25 @@ func (c *Chezmoi) Apply(ctx context.Context, repoPath, sourceDir string) error {
 }
 
 // Add adds files to the source state.
-// The secretsError option causes an error if secrets are detected.
-func (c *Chezmoi) Add(ctx context.Context, repoPath string, files []string, secretsError bool) error {
+// secretsMode can be "error", "warning", or "ignore".
+func (c *Chezmoi) Add(ctx context.Context, repoPath, sourceDir string, files []string, secretsMode string) error {
 	if len(files) == 0 {
 		return nil
 	}
 
-	args := []string{"add"}
-	if secretsError {
-		args = append(args, "--secrets=error")
+	args := []string{}
+	if sourceDir != "" {
+		args = append(args, "--source", filepath.Join(repoPath, sourceDir))
+	}
+	args = append(args, "add")
+
+	switch secretsMode {
+	case "", "ignore":
+		// No chezmoi flag for ignore mode.
+	case "error", "warning":
+		args = append(args, "--secrets="+secretsMode)
+	default:
+		return fmt.Errorf("invalid secrets mode: %s", secretsMode)
 	}
 	args = append(args, files...)
 

@@ -436,14 +436,13 @@ Examples:
 				return err
 			}
 
-			opts := discover.Options{
-				AutoYes:     autoYes,
-				DryRun:      dryRun,
-				NoCommit:    noCommit,
-				Deep:        deep,
-				ReportOnly:  reportOnly,
-				SecretsMode: secretsMode,
-			}
+			opts := discover.DefaultOptions()
+			opts.AutoYes = autoYes
+			opts.DryRun = dryRun
+			opts.NoCommit = noCommit
+			opts.Deep = deep
+			opts.ReportOnly = reportOnly
+			opts.SecretsMode = secretsMode
 
 			if a.logger != nil {
 				a.logger.Info("starting discovery",
@@ -471,7 +470,7 @@ Examples:
 	cmd.Flags().BoolVar(&noCommit, "no-commit", false, "Skip the commit step")
 	cmd.Flags().BoolVar(&deep, "deep", false, "Scan additional directories (AppData, Library)")
 	cmd.Flags().BoolVar(&reportOnly, "report", false, "Print report only (no prompts, no changes)")
-	cmd.Flags().StringVar(&secretsMode, "secrets", "error", "How to handle secrets: error, warning, ignore")
+	cmd.Flags().StringVar(&secretsMode, "secrets", discover.SecretsModeError, "How to handle secrets: error, warning, ignore")
 
 	return cmd
 }

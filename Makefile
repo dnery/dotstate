@@ -2,8 +2,9 @@
 # Run `make help` for available targets
 
 .DEFAULT_GOAL := help
-.PHONY: help all build build-local run test test-v test-cover lint fmt vet \
-        check secrets deps clean install-tools doctor
+.PHONY: help all build build-local run test test-v test-cover test-e2e test-e2e-fast test-e2e-deep \
+        test-e2e-capture test-e2e-record docs-check \
+        lint fmt vet check secrets deps clean install-tools doctor
 
 # Build info (injected at compile time)
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -17,6 +18,7 @@ LDFLAGS := -s -w -X 'github.com/dnery/dotstate/dot/internal/cli.version=$(VERSIO
 BIN_DIR     := bin
 COVER_DIR   := coverage
 CMD_DIR     := ./cmd/dot
+SECRETS_CMD_DIR := ./cmd/secrets-env
 
 # Go settings
 GO          := go
@@ -50,6 +52,10 @@ run-verbose: ## Run the CLI with verbose output
 
 build-local: ## Build for current platform
 	CGO_ENABLED=$(CGO_ENABLED) $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/dot $(CMD_DIR)
+	CGO_ENABLED=$(CGO_ENABLED) $(GO) build $(GOFLAGS) -o $(BIN_DIR)/secrets-env $(SECRETS_CMD_DIR)
+
+install-secrets-env: ## Install secrets-env to ~/.local/bin
+	CGO_ENABLED=$(CGO_ENABLED) $(GO) build $(GOFLAGS) -o $(HOME)/.local/bin/secrets-env $(SECRETS_CMD_DIR)
 
 build: ## Build for all platforms (linux, darwin, windows)
 	@mkdir -p $(BIN_DIR)/{linux,darwin,windows}
@@ -75,6 +81,24 @@ test-cover: ## Run tests with coverage report
 
 test-short: ## Run short tests only (skip integration tests)
 	$(GO) test -race -shuffle=on -short ./...
+
+test-e2e: build-local ## Run discover harness for all scenarios
+	./test/e2e/discover_harness.sh --dot-bin ./bin/dot --scenario all
+
+test-e2e-fast: build-local ## Run discover harness fast scenario
+	./test/e2e/discover_harness.sh --dot-bin ./bin/dot --scenario discover-fast
+
+test-e2e-deep: build-local ## Run discover harness deep scenario
+	./test/e2e/discover_harness.sh --dot-bin ./bin/dot --scenario discover-deep
+
+test-e2e-capture: build-local ## Run discover harness capture-loop scenario
+	./test/e2e/discover_harness.sh --dot-bin ./bin/dot --scenario capture-loop
+
+test-e2e-record: build-local ## Run discover harness with asciinema recording (opt-in upload)
+	./test/e2e/discover_harness.sh --dot-bin ./bin/dot --scenario all --record
+
+docs-check: ## Validate documentation structure, pointers, and local links
+	./test/docs/docs_check.sh
 
 ##@ Code Quality
 

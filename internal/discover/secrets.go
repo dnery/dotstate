@@ -141,16 +141,10 @@ func (d *SecretDetector) ScanFile(ctx context.Context, path string) ([]SecretFin
 			}
 
 			if match := pattern.Regex.FindString(line); match != "" {
-				// Truncate long matches for display
-				displayMatch := match
-				if len(displayMatch) > 40 {
-					displayMatch = displayMatch[:20] + "..." + displayMatch[len(displayMatch)-10:]
-				}
-
 				findings = append(findings, SecretFinding{
 					File:       path,
 					Line:       lineNum,
-					Match:      displayMatch,
+					Match:      redactedSecretMatch(match),
 					PatternID:  pattern.Name,
 					Confidence: d.confidenceLevel(pattern.Name),
 				})
@@ -159,6 +153,10 @@ func (d *SecretDetector) ScanFile(ctx context.Context, path string) ([]SecretFin
 	}
 
 	return findings, scanner.Err()
+}
+
+func redactedSecretMatch(_ string) string {
+	return "<redacted>"
 }
 
 // ScanFiles scans multiple files for secrets.
@@ -274,4 +272,3 @@ func (d *SecretDetector) UpdateCandidates(ctx context.Context, candidates Candid
 
 	return nil
 }
-

@@ -1,0 +1,65 @@
+package discover
+
+import (
+	"bytes"
+	"strings"
+	"testing"
+)
+
+func TestParseSelectionCategoryBoundaries(t *testing.T) {
+	recommended := CandidateList{
+		{RelPath: "~/.gitconfig"},
+		{RelPath: "~/.zshrc"},
+	}
+	maybe := CandidateList{
+		{RelPath: "~/.config/app/settings.json"},
+		{RelPath: "~/.config/app/theme.toml"},
+	}
+	risky := CandidateList{
+		{RelPath: "~/.ssh/id_rsa"},
+	}
+
+	selected := make(map[int]*Candidate)
+	out := &bytes.Buffer{}
+	p := NewPrompterWithIO(strings.NewReader(""), out, false)
+
+	maybeStart := len(recommended) + 1    // 3
+	riskyStart := maybeStart + len(maybe) // 5
+
+	p.parseSelection("1,3,4,5", selected, recommended, maybe, risky, maybeStart, riskyStart)
+
+	if got := selected[1].RelPath; got != "~/.gitconfig" {
+		t.Fatalf("selection 1 mapped to %q, want ~/.gitconfig", got)
+	}
+	if got := selected[3].RelPath; got != "~/.config/app/settings.json" {
+		t.Fatalf("selection 3 mapped to %q, want first maybe candidate", got)
+	}
+	if got := selected[4].RelPath; got != "~/.config/app/theme.toml" {
+		t.Fatalf("selection 4 mapped to %q, want second maybe candidate", got)
+	}
+	if got := selected[5].RelPath; got != "~/.ssh/id_rsa" {
+		t.Fatalf("selection 5 mapped to %q, want first risky candidate", got)
+	}
+}
+
+func TestParseSelectionRejectsOutOfRange(t *testing.T) {
+	selected := make(map[int]*Candidate)
+	out := &bytes.Buffer{}
+	p := NewPrompterWithIO(strings.NewReader(""), out, false)
+
+	recommended := CandidateList{{RelPath: "~/.gitconfig"}}
+	maybe := CandidateList{{RelPath: "~/.config/app/settings.json"}}
+	risky := CandidateList{{RelPath: "~/.ssh/id_rsa"}}
+
+	maybeStart := len(recommended) + 1    // 2
+	riskyStart := maybeStart + len(maybe) // 3
+
+	p.parseSelection("4", selected, recommended, maybe, risky, maybeStart, riskyStart)
+
+	if len(selected) != 0 {
+		t.Fatalf("expected no selections for out-of-range input, got %d", len(selected))
+	}
+	if !strings.Contains(out.String(), "Invalid item number: 4") {
+		t.Fatalf("expected invalid-number warning, got %q", out.String())
+	}
+}

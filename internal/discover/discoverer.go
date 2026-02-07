@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/dnery/dotstate/dot/internal/chez"
 	"github.com/dnery/dotstate/dot/internal/config"
@@ -56,16 +57,49 @@ type Options struct {
 	Platform *platform.Platform
 }
 
+const (
+	SecretsModeError   = "error"
+	SecretsModeWarning = "warning"
+	SecretsModeIgnore  = "ignore"
+)
+
 // DefaultOptions returns default discovery options.
 func DefaultOptions() Options {
 	return Options{
-		SecretsMode: "error",
+		SecretsMode: SecretsModeError,
 		MaxFileSize: DefaultMaxFileSize,
 	}
 }
 
+func normalizeOptions(opts Options) (Options, error) {
+	defaults := DefaultOptions()
+
+	if strings.TrimSpace(opts.SecretsMode) == "" {
+		opts.SecretsMode = defaults.SecretsMode
+	}
+	opts.SecretsMode = strings.ToLower(strings.TrimSpace(opts.SecretsMode))
+
+	switch opts.SecretsMode {
+	case SecretsModeError, SecretsModeWarning, SecretsModeIgnore:
+		// valid
+	default:
+		return Options{}, fmt.Errorf("invalid secrets mode %q (expected: error, warning, ignore)", opts.SecretsMode)
+	}
+
+	if opts.MaxFileSize <= 0 {
+		opts.MaxFileSize = defaults.MaxFileSize
+	}
+
+	return opts, nil
+}
+
 // NewDiscoverer creates a new discoverer.
 func NewDiscoverer(cfg *config.Config, opts Options) (*Discoverer, error) {
+	opts, err := normalizeOptions(opts)
+	if err != nil {
+		return nil, err
+	}
+
 	plat := opts.Platform
 	if plat == nil {
 		var err error
@@ -110,6 +144,11 @@ func NewDiscoverer(cfg *config.Config, opts Options) (*Discoverer, error) {
 
 // Run executes the discovery process.
 func (d *Discoverer) Run(ctx context.Context, opts Options) error {
+	opts, err := normalizeOptions(opts)
+	if err != nil {
+		return err
+	}
+
 	// Scan for candidates
 	result, err := d.scanner.Scan(ctx)
 	if err != nil {
@@ -117,7 +156,7 @@ func (d *Discoverer) Run(ctx context.Context, opts Options) error {
 	}
 
 	// Run secret detection on candidates
-	if opts.SecretsMode != "ignore" {
+	if opts.SecretsMode != SecretsModeIgnore {
 		if err := d.secrets.UpdateCandidates(ctx, result.Candidates); err != nil {
 			return fmt.Errorf("secret scan failed: %w", err)
 		}
@@ -155,6 +194,15 @@ func (d *Discoverer) Run(ctx context.Context, opts Options) error {
 		return nil
 	}
 
+	repoAlreadyDirty := false
+	if !opts.NoCommit {
+		dirty, err := d.git.HasChanges(ctx, d.cfg.RepoRoot())
+		if err != nil {
+			return fmt.Errorf("check repo status before discover commit: %w", err)
+		}
+		repoAlreadyDirty = dirty
+	}
+
 	// Add files
 	if err := d.addCandidates(ctx, selected, opts); err != nil {
 		return err
@@ -162,7 +210,9 @@ func (d *Discoverer) Run(ctx context.Context, opts Options) error {
 
 	// Commit if enabled
 	if !opts.NoCommit {
-		if d.prompter.ConfirmCommit() {
+		if repoAlreadyDirty {
+			fmt.Println("Skipping automatic commit because the repo had pre-existing changes.")
+		} else if d.prompter.ConfirmCommit() {
 			if err := d.commit(ctx); err != nil {
 				return fmt.Errorf("commit failed: %w", err)
 			}
@@ -193,8 +243,7 @@ func (d *Discoverer) addCandidates(ctx context.Context, candidates []*Candidate,
 
 	// Add files with chezmoi
 	if len(files) > 0 {
-		secretsError := opts.SecretsMode == "error"
-		if err := d.chezmoi.Add(ctx, d.cfg.RepoRoot(), files, secretsError); err != nil {
+		if err := d.chezmoi.Add(ctx, d.cfg.RepoRoot(), d.cfg.Chex.SourceDir, files, opts.SecretsMode); err != nil {
 			return fmt.Errorf("chezmoi add failed: %w", err)
 		}
 		fmt.Printf("Added %d files.\n", len(files))

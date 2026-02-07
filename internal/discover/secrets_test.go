@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -82,7 +83,7 @@ func TestSecretDetector_ScanFile(t *testing.T) {
 		{
 			name:         "slack token",
 			content:      "SLACK_TOKEN=xoxa-0000000000-0000000000000-test", // App token format for testing
-			wantFindings: 2, // slack-token and token-assignment both match
+			wantFindings: 2,                                                // slack-token and token-assignment both match
 			wantPatterns: []string{"slack-token"},
 		},
 		{
@@ -163,6 +164,32 @@ func TestSecretDetector_ScanFiles(t *testing.T) {
 
 	if _, ok := results[file2]; !ok {
 		t.Error("ScanFiles() should have findings for secret.txt")
+	}
+}
+
+func TestSecretDetector_RedactsDisplayedMatches(t *testing.T) {
+	tmpDir := t.TempDir()
+	token := "gho_" + strings.Repeat("a", 36)
+	path := filepath.Join(tmpDir, "npmrc")
+	if err := os.WriteFile(path, []byte("//npm.pkg.github.com/:_authToken="+token), 0o644); err != nil {
+		t.Fatalf("write token file: %v", err)
+	}
+
+	d := NewSecretDetector(nil)
+	findings, err := d.ScanFile(context.Background(), path)
+	if err != nil {
+		t.Fatalf("ScanFile() error = %v", err)
+	}
+	if len(findings) == 0 {
+		t.Fatal("expected token findings")
+	}
+	for _, finding := range findings {
+		if strings.Contains(finding.Match, token) {
+			t.Fatalf("finding leaked token in display match: %q", finding.Match)
+		}
+		if finding.Match != "<redacted>" {
+			t.Fatalf("finding.Match = %q, want <redacted>", finding.Match)
+		}
 	}
 }
 

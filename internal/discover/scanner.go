@@ -230,8 +230,8 @@ func (s *Scanner) processFile(ctx context.Context, path string, info os.FileInfo
 		return nil
 	}
 
-	// Skip very large files
-	if info.Size() > s.opts.MaxFileSize {
+	// Skip very large files when a max is configured.
+	if s.opts.MaxFileSize > 0 && info.Size() > s.opts.MaxFileSize {
 		// Unless it's a config-ish extension
 		if !s.classifier.IsConfigExtension(path) {
 			return nil

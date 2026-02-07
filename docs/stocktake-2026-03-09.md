@@ -1,0 +1,16 @@
+# Secret-loading stocktake - superseded
+
+Status: superseded by `secrets-env`
+
+This stocktake originally benchmarked the pre-cache shell secret flow and helped justify replacing prompt-time secret loading with explicit refreshes into local cache files.
+
+Current contract:
+
+- Refresh from 1Password with `secrets-env refresh --all` or `secrets-env refresh --scope <name>`.
+- Store generated cache files under `~/.local/state/dotstate/secrets/`.
+- Source existing cache files from shell startup.
+- Keep shell startup non-interactive and cache-only.
+
+The old benchmark details are intentionally not preserved here as operational guidance. They described retired env-mount and per-command wrapper experiments, not the current system.
+
+For the active architecture, see [docs/specs/secrets-agent.md](specs/secrets-agent.md).

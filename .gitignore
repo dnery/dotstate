@@ -1,6 +1,9 @@
 # Local cache / private outputs
 state/private/
 state/cache/
+state/e2e-runs/
+.bug-hunter/
+.serena/
 **/*.tmp
 **/*.bak
 

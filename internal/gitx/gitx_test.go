@@ -2,6 +2,9 @@ package gitx
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/dnery/dotstate/dot/internal/testutil"
@@ -36,6 +39,45 @@ func TestNew(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestEnsureClonedRefusesNonEmptyNonGitDir(t *testing.T) {
+	repoPath := t.TempDir()
+	keepPath := filepath.Join(repoPath, "keep.txt")
+	if err := os.WriteFile(keepPath, []byte("do not delete"), 0o644); err != nil {
+		t.Fatalf("write existing file: %v", err)
+	}
+
+	mock := testutil.NewMockRunner(t)
+	g := New("git", mock)
+
+	err := g.EnsureCloned(context.Background(), "https://github.com/test/dotstate", repoPath, "main")
+	if err == nil {
+		t.Fatal("EnsureCloned() expected error for non-empty non-git directory")
+	}
+	if !strings.Contains(err.Error(), "not a git repo or empty directory") {
+		t.Fatalf("EnsureCloned() error = %v", err)
+	}
+	if _, statErr := os.Stat(keepPath); statErr != nil {
+		t.Fatalf("existing file was removed: %v", statErr)
+	}
+	mock.AssertCallCount(0)
+}
+
+func TestEnsureClonedAllowsEmptyExistingDir(t *testing.T) {
+	repoPath := t.TempDir()
+	mock := testutil.NewMockRunner(t)
+	mock.OnCommandSuccess(
+		testutil.MatchCommandPrefix("git", "clone", "https://github.com/test/dotstate", repoPath),
+		"",
+	)
+
+	g := New("git", mock)
+	if err := g.EnsureCloned(context.Background(), "https://github.com/test/dotstate", repoPath, "main"); err != nil {
+		t.Fatalf("EnsureCloned() error = %v", err)
+	}
+
+	mock.AssertCalled(testutil.MatchCommandPrefix("git", "clone", "https://github.com/test/dotstate", repoPath))
 }
 
 func TestPorcelainStatus(t *testing.T) {

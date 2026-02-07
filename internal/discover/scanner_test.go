@@ -49,6 +49,36 @@ func TestDefaultRootsUsesInjectedPlatformDeep(t *testing.T) {
 	}
 }
 
+func TestScanIncludesDotfilesWhenMaxFileSizeUnset(t *testing.T) {
+	home := t.TempDir()
+	if err := os.WriteFile(filepath.Join(home, ".zshrc"), []byte("export EDITOR=vim\n"), 0o644); err != nil {
+		t.Fatalf("write .zshrc: %v", err)
+	}
+
+	scanner := NewScanner(ScanOptions{
+		Home:     home,
+		Platform: &platform.Platform{OS: platform.Darwin, Home: home},
+		// MaxFileSize intentionally unset (0) to verify it does not exclude everything.
+		ManagedPaths: make(map[string]bool),
+	})
+
+	result, err := scanner.Scan(t.Context())
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+
+	found := false
+	for _, candidate := range result.Candidates {
+		if candidate.RelPath == "~/.zshrc" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected ~/.zshrc candidate with MaxFileSize=0, got %d candidates", len(result.Candidates))
+	}
+}
+
 func containsRoot(roots []string, target string) bool {
 	for _, root := range roots {
 		if root == target {

@@ -27,7 +27,7 @@ func New(cfg *config.Config, g *gitx.Git, ch *chez.Chezmoi) *Syncer {
 
 func (s *Syncer) Capture(ctx context.Context) error {
 	// Phase 1: capture dotfiles (managed artifacts) back into repo source state.
-	if err := s.Chez.ReAdd(ctx, s.Cfg.Repo.Path); err != nil {
+	if err := s.Chez.ReAdd(ctx, s.Cfg.Repo.Path, s.Cfg.Chex.SourceDir); err != nil {
 		return err
 	}
 	// TODO: capture OS exports (packages lists, registry, defaults) into state/
