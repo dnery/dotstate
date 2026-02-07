@@ -141,14 +141,16 @@ dot discover [flags]
   - Print classification report only (no interactive UI)
   - Does not add files unless combined with `--yes`
 
-### Planned flags (Phase 3+)
-
-- `--commit` / `--no-commit`
-  - Control whether to commit after adding
+- `--no-commit`
+  - Skip the commit step after adding files
+  - Useful when you want to review changes before committing
 
 - `--secrets {error|warning|ignore}`
   - Default: `error`
+  - Controls how secrets are handled during add
   - Passed through to `chezmoi add --secrets=...`
+
+### Planned flags (future)
 
 - `--roots <path1,path2,...>`
   - Override root set entirely (advanced)
