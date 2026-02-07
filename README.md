@@ -191,6 +191,9 @@ Environment variables override config:
 # Run tests
 make test
 
+# Run discover e2e harness (sandbox + report artifacts)
+make test-e2e
+
 # Run tests with coverage
 make test-cover
 

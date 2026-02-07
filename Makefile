@@ -2,8 +2,8 @@
 # Run `make help` for available targets
 
 .DEFAULT_GOAL := help
-.PHONY: help all build build-local run test test-v test-cover lint fmt vet \
-        check secrets deps clean install-tools doctor
+.PHONY: help all build build-local run test test-v test-cover test-e2e test-e2e-record \
+        lint fmt vet check secrets deps clean install-tools doctor
 
 # Build info (injected at compile time)
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -75,6 +75,12 @@ test-cover: ## Run tests with coverage report
 
 test-short: ## Run short tests only (skip integration tests)
 	$(GO) test -race -shuffle=on -short ./...
+
+test-e2e: build-local ## Run discover harness (writes artifacts under state/e2e-runs/)
+	./test/e2e/discover_harness.sh --dot-bin ./bin/dot --interactive-demo
+
+test-e2e-record: build-local ## Run discover harness with asciinema recording
+	./test/e2e/discover_harness.sh --dot-bin ./bin/dot --record --interactive-demo
 
 ##@ Code Quality
 
