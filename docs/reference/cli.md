@@ -37,7 +37,13 @@ Flags:
 
 ### `dot capture`
 
-Captures live-file edits back into managed state through the module orchestrator.
+Captures live edits back into managed state through the module orchestrator. In addition to Chezmoi-managed files, macOS capture writes reviewable non-file artifacts when facts are available:
+
+- `state/macos/brew/Brewfile`
+- `state/macos/mas.toml`
+- `state/macos/apps.toml`
+- `state/macos/defaults.toml`
+- `state/secrets/generated.toml` reference/policy metadata only; no secret values
 
 Flags:
 - `--dry-run`: emit the module plan without mutating repo artifacts.
@@ -79,6 +85,10 @@ Install flags:
 - `--no-load`: write the plist but do not call `launchctl bootstrap`/`enable`.
 
 macOS shutdown flush is intentionally not installed. Use interval sync and `dot sync now` for explicit manual flushes.
+
+### `dot subrepo status`
+
+Reads `state/subrepos.toml` and reports whether each declared nested git repository is missing, present, or blocked by an existing non-git path. `dot apply` can clone missing subrepos declared in the manifest; existing non-git destinations remain manual.
 
 ### `dot discover`
 

@@ -1,0 +1,5 @@
+DOTSTATE_TEST_SECRET_DO_NOT_PRINT
+fixture-host.local
+/private/var
+/var/folders
+/Users/

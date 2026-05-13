@@ -19,7 +19,7 @@ This spec maps macOS state into first-party `dotstate` modules. It depends on th
 - `subrepos`: nested git repositories tracked by reference.
 - `secrets`: secret references and generated-file checkpoints; never secret values.
 
-The first implementation target, read-only `dot macos audit --json`, now emits facts for the initial surfaces while preserving diagnostics for missing tools and permissions. Mutating behavior must be introduced later through the plan/backup/apply/verify lifecycle in [modules.md](modules.md).
+The first implementation target, read-only `dot macos audit --json`, now emits facts for the initial surfaces while preserving diagnostics for missing tools and permissions. Capture now writes reviewable desired-state artifacts for the first non-file surfaces. System mutation remains manual/dry-run-only except clone-if-missing subrepos, which use the plan/apply/verify lifecycle in [modules.md](modules.md).
 
 ## macOS audit envelope
 
@@ -291,19 +291,19 @@ Implementation note: the audit bridge includes a `macos.keychain.reference_only`
 | Surface | Safe capture default | Notes |
 | --- | --- | --- |
 | `files` | Existing Chezmoi `re-add` for managed files only. | Secret scanning remains a guardrail, not permission to capture secrets. |
-| `brew` | Generate/review Brewfile-compatible desired state. | Avoid auto-capturing transient pinned/outdated metadata unless requested. |
-| `mas` | Capture app IDs/names when `mas` is available. | Account-bound failures become diagnostics. |
-| `apps` | Capture bundle IDs and source hints only. | Direct-download URLs remain manual until curated. |
-| `defaults` | Capture curated domain/key values only. | No full plist dumps. |
-| `launchd` | Capture selected user agents/services only after review. | Do not capture arbitrary env/program args without redaction. |
-| `profiles` | Capture expected identifiers/manual checkpoints. | No payload secrets. |
-| `privacy_tcc` | Capture manual checklist state only. | No DB copies. |
-| `subrepos` | Capture path, redacted remote, and branch. | Merge with existing manifest; do not track contents. |
-| `secrets` | Capture references and metadata only. | Never capture values. |
+| `brew` | Implemented: generate/review `state/macos/brew/Brewfile` from audit facts. | System apply remains manual/dry-run-only; avoid auto-upgrade side effects. |
+| `mas` | Implemented: capture app IDs/names to `state/macos/mas.toml` when `mas` facts are available. | Account-bound failures become diagnostics; install remains manual. |
+| `apps` | Implemented: capture bundle IDs and source hints to `state/macos/apps.toml`. | Direct-download URLs remain manual until curated. |
+| `defaults` | Implemented: capture curated domain/key values to `state/macos/defaults.toml`. | No full plist dumps; writes remain manual until rollback/idempotency is proven. |
+| `launchd` | Audit implemented; capture selected user agents/services remains review/manual. | Do not capture arbitrary env/program args without redaction. |
+| `profiles` | Audit implemented; expected identifiers/manual checkpoints remain report-only. | No payload secrets. |
+| `privacy_tcc` | Audit manual checklist state only. | No DB copies. |
+| `subrepos` | Implemented: `state/subrepos.toml`, `dot subrepo status`, and clone-if-missing apply. | Existing non-git destinations remain manual. |
+| `secrets` | Implemented: `state/secrets/generated.toml` policy/reference metadata only. | Never capture values. |
 
 ## Apply order guidance
 
-Future module apply should order low-level prerequisites before dependent state:
+Module apply should order low-level prerequisites before dependent state. Today only files and clone-if-missing subrepos mutate automatically; other non-file surfaces render manual/dry-run-only results until rollback/idempotency coverage exists.
 
 1. `files` non-secret baseline needed by tools.
 2. `brew` formulae/taps/casks.

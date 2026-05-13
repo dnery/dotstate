@@ -122,7 +122,7 @@ func assertMacOSFixtureSentinelsAbsent(t *testing.T, dir string) {
 		t.Fatalf("read fixture dir: %v", err)
 	}
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+		if entry.IsDir() || entry.Name() == "README.md" || entry.Name() == "redaction.assert_absent.txt" {
 			continue
 		}
 		content, err := os.ReadFile(filepath.Join(dir, entry.Name()))

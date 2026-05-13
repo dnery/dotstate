@@ -480,8 +480,14 @@ CAPTUREDSTATE
         else
             record_check "capture updates desired artifact" "FAIL" "source artifact did not reflect sandbox-home edit" ""
         fi
+        if [[ -f "$REPO_DIR/state/secrets/generated.toml" ]] && rg -q "secret_values_serialized = false" "$REPO_DIR/state/secrets/generated.toml"; then
+            record_check "capture writes secret reference policy" "PASS" "secret-backed generated-file policy is metadata-only" ""
+        else
+            record_check "capture writes secret reference policy" "FAIL" "secret policy artifact missing or unsafe" ""
+        fi
     else
         record_check "capture updates desired artifact" "FAIL" "capture command failed" ""
+        record_check "capture writes secret reference policy" "FAIL" "capture command failed" ""
     fi
 
     if [[ "$(uname -s)" == "Darwin" ]]; then

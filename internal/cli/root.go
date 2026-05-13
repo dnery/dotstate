@@ -104,6 +104,7 @@ func Execute() int {
 	root.AddCommand(cmdMacOS(a))
 	root.AddCommand(cmdSchedule(a))
 	root.AddCommand(cmdDiscover(a))
+	root.AddCommand(cmdSubrepo(a))
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -175,7 +176,9 @@ func newSyncer(cfg *config.Config, home string) *sync.Syncer {
 	g := gitx.New(cfg.Tools.Git, r)
 	ch := chez.New(cfg.Tools.Chezmoi, r)
 	files := modules.NewFilesModule(cfg, ch, home)
-	return sync.NewWithModules(cfg, g, ch, modules.NewOrchestrator(files))
+	mods := []modules.Module{files}
+	mods = append(mods, macos.NewStateModules(cfg, r, home)...)
+	return sync.NewWithModules(cfg, g, ch, modules.NewOrchestrator(mods...))
 }
 
 func cmdDoctor(a *app) *cobra.Command {
@@ -760,6 +763,46 @@ func redactStrings(values []string) []string {
 		out[i] = redact.Text(value)
 	}
 	return out
+}
+
+func cmdSubrepo(a *app) *cobra.Command {
+	subrepoCmd := &cobra.Command{
+		Use:   "subrepo",
+		Short: "Inspect sub-repositories tracked by dotstate",
+	}
+	statusCmd := &cobra.Command{
+		Use:   "status",
+		Short: "Report state/subrepos.toml clone status",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, _, err := a.loadConfig()
+			if err != nil {
+				return err
+			}
+			statuses, err := macos.SubrepoStatuses(cfg, a.plat.Home)
+			if err != nil {
+				return err
+			}
+			fmt.Println(ui.Title("Subrepo status"))
+			if len(statuses) == 0 {
+				fmt.Println("  No subrepos declared in state/subrepos.toml")
+				return nil
+			}
+			for _, status := range statuses {
+				url := redact.Text(status.URL)
+				if url == "" {
+					url = "(no remote)"
+				}
+				branch := status.Branch
+				if branch == "" {
+					branch = "default"
+				}
+				fmt.Printf("  %s: %s [%s] %s\n", redact.Text(status.Path), status.Status, branch, url)
+			}
+			return nil
+		},
+	}
+	subrepoCmd.AddCommand(statusCmd)
+	return subrepoCmd
 }
 
 func cmdDiscover(a *app) *cobra.Command {
