@@ -10,12 +10,28 @@ Primary support targets right now:
 
 ## Quick Start
 
+Fresh macOS Apple Silicon bootstrap:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/dnery/dotstate/master/scripts/bootstrap-macos.sh \
+  | sh -s -- --repo https://github.com/dnery/dotstate
+```
+
+Local development:
+
 ```sh
 # Build local binary
 make build-local
 
 # Check environment
 ./bin/dot doctor
+
+# Preview apply/sync plans
+./bin/dot apply --dry-run
+./bin/dot sync --dry-run
+
+# Audit macOS bootstrap diagnostics
+./bin/dot macos audit --json
 
 # Discover unmanaged config files
 ./bin/dot discover --report

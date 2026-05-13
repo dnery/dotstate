@@ -1,10 +1,11 @@
 # Bootstrap macOS (Apple Silicon)
 
-This doc brings a fresh macOS machine to a usable `dotstate` baseline.
+This guide brings a fresh macOS machine to a usable `dotstate` baseline with explicit manual checkpoints.
 
 Manual checkpoints you should expect:
 - Xcode Command Line Tools install prompt
-- 1Password sign-in/unlock (Touch ID / QR)
+- Homebrew installation if it is not already present
+- 1Password desktop sign-in/unlock and CLI integration
 
 ---
 
@@ -12,96 +13,111 @@ Manual checkpoints you should expect:
 
 After bootstrap:
 
-- `dot` is installed and on PATH (or available in repo `bin/`)
-- `git`, `chezmoi`, and `op` are installed
-- 1Password desktop + CLI integration is working
-- `dot apply` works
-- `dot discover` can harvest existing configs
+- `dot` is installed and on PATH (default: `~/.local/bin/dot`).
+- The dotstate repo is cloned/prepared.
+- `git`, `chezmoi`, and optionally `op` are available for normal apply/sync flows.
+- `dot doctor`, `dot apply --dry-run`, and `dot macos audit --json` are reachable without internal docs.
+- Optional scheduled sync is available through `dot schedule install`.
 
 ---
 
-## Bootstrap (MVP, today)
+## One-line bootstrap
 
-### 0) Install Xcode Command Line Tools (manual checkpoint)
-Run:
+```bash
+curl -fsSL https://raw.githubusercontent.com/dnery/dotstate/master/scripts/bootstrap-macos.sh \
+  | sh -s -- --repo https://github.com/dnery/dotstate
+```
+
+The script is intentionally conservative:
+
+- supports macOS Apple Silicon (`darwin/arm64`)
+- downloads `dot-darwin-arm64.tar.gz` from the latest GitHub Release
+- installs `dot` to `${DOTSTATE_INSTALL_DIR:-$HOME/.local/bin}`
+- checks Xcode Command Line Tools with `xcode-select -p`
+- checks for Homebrew and prints the official setup path if missing
+- treats 1Password/op unlock as a manual checkpoint; it does not fetch or print secrets
+- runs `dot bootstrap --repo <url>` when `--repo` is provided
+
+Dry-run the script before using it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dnery/dotstate/master/scripts/bootstrap-macos.sh \
+  | sh -s -- --dry-run --repo https://github.com/dnery/dotstate
+```
+
+Useful overrides:
+
+```bash
+DOTSTATE_VERSION=vX.Y.Z                  # release tag; default latest
+DOTSTATE_INSTALL_DIR="$HOME/.local/bin"   # install destination
+DOTSTATE_RELEASE_REPO=dnery/dotstate      # release owner/repo
+```
+
+---
+
+## Manual checkpoints
+
+### Xcode Command Line Tools
+
+If the script reports that Xcode Command Line Tools are missing, run:
 
 ```bash
 xcode-select --install
 ```
 
-Follow the prompt. This is required for many developer tools.
+Then re-run bootstrap.
 
-### 1) Install Homebrew (recommended)
-Install Homebrew using the official instructions.
+### Homebrew
 
-Then install dependencies:
+If Homebrew is missing, install it from <https://brew.sh>, then install required tools:
 
 ```bash
-brew install go git chezmoi
+brew install git chezmoi
 brew install --cask 1password
 brew install --cask 1password-cli
 ```
 
-If you prefer not to use Homebrew:
-- install Go, Git, Chezmoi, 1Password, and 1Password CLI via official installers
-- ensure `go`, `git`, `chezmoi`, and `op` are on PATH
+### 1Password/op
 
-### 2) Sign in to 1Password + enable SSH agent + CLI integration
-- Sign in to 1Password desktop
-- Enable SSH agent
-- Enable CLI integration
-- Verify:
+Sign in to 1Password desktop, enable CLI integration, unlock it, and verify:
 
 ```bash
-op whoami
+op account list
 ```
 
-Authenticate if prompted.
-
-### 3) Clone repo
-
-```bash
-git clone https://github.com/dnery/dotstate ~/Projects/dotstate
-cd ~/Projects/dotstate
-```
-
-### 4) Build `dot`
-
-```bash
-make build
-```
-
-Or build just for macOS:
-
-```bash
-CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ./bin/dot ./cmd/dot
-```
-
-### 5) Validate
-
-```bash
-./bin/dot doctor
-./bin/dot apply
-```
-
-Then:
-
-```bash
-./bin/dot discover
-```
+This is a deliberate manual checkpoint. dotstate must not print decrypted secret values during bootstrap.
 
 ---
 
-## Bootstrap (target flow, later)
+## Validate after bootstrap
 
-Eventually macOS bootstrap should be:
+From the cloned repo:
 
 ```bash
-curl -fsSL <bootstrap-url> | sh
-dot bootstrap --repo https://github.com/dnery/dotstate
+dot doctor
+dot apply --dry-run
+dot sync --dry-run
+dot macos audit --json
 ```
 
-Where the bootstrap script:
-- downloads the correct `dot` binary from GitHub Releases
-- installs prerequisites (brew)
-- blocks on 1Password sign-in checkpoint
+`dot macos audit --json` currently emits the stable audit envelope and capability diagnostics used by bootstrap. Full macOS surface collectors are planned in the read-only audit goal.
+
+---
+
+## Optional scheduled sync
+
+Install the user LaunchAgent:
+
+```bash
+dot schedule install --dry-run
+dot schedule install
+```
+
+Check or remove it:
+
+```bash
+dot schedule status
+dot schedule remove
+```
+
+The LaunchAgent runs `dot --config <repo>/dot.toml sync` every `[sync].interval_minutes` minutes and at load. macOS shutdown flush is not installed because user LaunchAgents cannot guarantee a safe non-destructive shutdown hook. Use `dot sync now` before shutdown/restart when you need an explicit flush.

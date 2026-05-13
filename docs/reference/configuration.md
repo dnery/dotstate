@@ -33,6 +33,14 @@ distro_name = "nixos"
 flake_ref = ".#wsl"
 ```
 
+## Sections
+
+### `[sync]`
+
+- `interval_minutes`: cadence used by `dot schedule install` when rendering the macOS LaunchAgent. `30` means launchd `StartInterval = 1800` seconds.
+- `enable_idle`: retained for future platform-specific idle scheduling. macOS user LaunchAgent idle integration is not implemented yet.
+- `enable_shutdown`: retained for future platform-specific shutdown behavior. macOS intentionally does not install a shutdown hook; use `dot sync now` for explicit manual flushes.
+
 ## Environment Overrides
 
 - `DOTSTATE_REPO_URL`

@@ -47,17 +47,44 @@ Run scheduled tasks without elevation.
 
 ## macOS (launchd user agent)
 
-Create a LaunchAgent:
+Implemented command surface:
 
-- StartInterval: 1800 seconds (30 min)
-- RunAtLoad: true
-- ProgramArguments: `/path/to/dot sync`
+```bash
+dot schedule install
+dot schedule status
+dot schedule remove
+```
+
+`dot schedule install` creates a user LaunchAgent at:
+
+```text
+~/Library/LaunchAgents/com.dnery.dotstate.sync.plist
+```
+
+Current LaunchAgent contract:
+
+- `Label`: `com.dnery.dotstate.sync`
+- `StartInterval`: `[sync].interval_minutes * 60` seconds; default 1800 seconds (30 min)
+- `RunAtLoad`: true
+- `ProgramArguments`: `/path/to/dot --config /path/to/dot.toml sync`
+- `WorkingDirectory`: repo root
+- Logs: `state/logs/schedule.out.log` and `state/logs/schedule.err.log`
+- PATH includes `/opt/homebrew/bin` and `/usr/local/bin` for Homebrew-installed tools.
+
+Install uses `launchctl bootstrap gui/$UID <plist>` and `launchctl enable gui/$UID/com.dnery.dotstate.sync`. Remove uses best-effort `launchctl bootout` and deletes only the dotstate plist path.
+
+Safe review flags:
+
+```bash
+dot schedule install --dry-run
+dot schedule install --no-load
+```
 
 Idle integration on macOS is non-trivial without additional tooling; treat it as a later enhancement.
 
-Shutdown flush on macOS is also not guaranteed. Prefer:
-- more frequent interval syncs
-- and manual `dot sync now` when needed
+Shutdown flush on macOS is also not guaranteed. dotstate intentionally does not install a shutdown hook or root-level logout item. Prefer:
+- interval syncs
+- `dot sync now` before shutdown/restart when you need an explicit flush
 
 ---
 

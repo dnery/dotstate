@@ -20,9 +20,13 @@ Checks platform, config resolution, and required tools.
 
 ### `dot bootstrap`
 
-- `--repo <url>`: required unless running from configured repo.
+Clones/prepares repo path and prints macOS bootstrap checkpoints.
 
-Clones/prepares repo path.
+Flags:
+- `--repo <url>`: required unless running from a configured repo.
+- `--skip-op-checkpoint`: omit the 1Password/op manual checkpoint text.
+
+The command checks Xcode Command Line Tools, points missing Homebrew users to the official installer, treats 1Password/op unlock as a manual checkpoint, then prints safe validation commands: `dot doctor`, `dot apply --dry-run`, `dot sync --dry-run`, `dot macos audit --json`, and `dot schedule install`.
 
 ### `dot apply`
 
@@ -49,6 +53,32 @@ Flags:
 
 Subcommand:
 - `dot sync now` (alias).
+
+### `dot macos audit`
+
+Emits a non-mutating macOS audit envelope.
+
+Flags:
+- `--json`: required; emits `dotstate.audit.v1` JSON.
+
+The current bootstrap bridge redacts hostnames and reports pending macOS surfaces as capability diagnostics. Full brew/MAS/apps/defaults collectors remain planned under the macOS audit goal.
+
+### `dot schedule`
+
+Manages the macOS user LaunchAgent for scheduled sync.
+
+Subcommands:
+- `dot schedule install`: write and load `~/Library/LaunchAgents/com.dnery.dotstate.sync.plist`.
+- `dot schedule status`: report whether the LaunchAgent plist exists and whether launchd reports it loaded.
+- `dot schedule remove`: unload best-effort and remove the dotstate-owned plist.
+
+Install flags:
+- `--dry-run`: print the LaunchAgent plan without writing or loading it.
+- `--dot-bin <path>`: binary path launchd should execute; defaults to the current executable.
+- `--interval <minutes>`: override `[sync].interval_minutes`.
+- `--no-load`: write the plist but do not call `launchctl bootstrap`/`enable`.
+
+macOS shutdown flush is intentionally not installed. Use interval sync and `dot sync now` for explicit manual flushes.
 
 ### `dot discover`
 
