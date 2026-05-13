@@ -63,6 +63,7 @@ func (m *FilesModule) Audit(ctx context.Context) ([]Fact, []Diagnostic, error) {
 			continue
 		}
 		current := map[string]any{"path": m.displayPath(dest)}
+		var statErr error
 		if info, err := os.Lstat(dest); err == nil {
 			current["exists"] = true
 			current["mode"] = fmt.Sprintf("%04o", info.Mode().Perm())
@@ -70,12 +71,19 @@ func (m *FilesModule) Audit(ctx context.Context) ([]Fact, []Diagnostic, error) {
 		} else if os.IsNotExist(err) {
 			current["exists"] = false
 		} else {
+			statErr = err
 			current["exists"] = nil
-			current["stat_error"] = true
+			current["stat_error"] = redact.Text(err.Error())
 		}
 		fact := m.sourceFact(current)
 		fact.ID = "files:path/" + m.displayPath(dest)
 		fact.Source = Source{Kind: "path", Value: m.displayPath(dest)}
+		if statErr != nil {
+			if diag, ok := PermissionDiagnostic(filesSurface, fact.ID, "stat managed path", statErr); ok {
+				fact.Diagnostics = append(fact.Diagnostics, diag)
+				fact.Sensitivity = promoteSensitivity(fact.Sensitivity, redact.Report{Sensitivity: redact.SensitivityRestricted})
+			}
+		}
 		facts = append(facts, fact)
 	}
 	return facts, nil, nil
@@ -140,7 +148,11 @@ func (m *FilesModule) Backup(ctx context.Context, changes []Change, plan *Plan) 
 			continue
 		}
 		if err != nil {
-			diagnostics = append(diagnostics, backupDiagnostic(SeverityWarning, "files.backup.stat_failed", fmt.Sprintf("Could not stat %s: %v", m.displayPath(dest), err), dest))
+			if diag, ok := PermissionDiagnostic(filesSurface, backup.ID, "backup stat", err); ok {
+				diagnostics = append(diagnostics, diag)
+			} else {
+				diagnostics = append(diagnostics, backupDiagnostic(SeverityWarning, "files.backup.stat_failed", fmt.Sprintf("Could not stat %s: %v", m.displayPath(dest), err), dest))
+			}
 			backup.Restore.Supported = false
 			backups = append(backups, backup)
 			continue
@@ -159,6 +171,12 @@ func (m *FilesModule) Backup(ctx context.Context, changes []Change, plan *Plan) 
 		payloadPath := m.payloadPath(backupID, dest)
 		sha, err := copyFileWithSHA(dest, payloadPath, info.Mode().Perm())
 		if err != nil {
+			if diag, ok := PermissionDiagnostic(filesSurface, backup.ID, "backup copy", err); ok {
+				diagnostics = append(diagnostics, diag)
+				backup.Restore.Supported = false
+				backups = append(backups, backup)
+				continue
+			}
 			return backups, diagnostics, err
 		}
 		backup.Current["sha256"] = sha

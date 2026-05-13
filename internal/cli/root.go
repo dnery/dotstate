@@ -24,6 +24,7 @@ import (
 	"github.com/dnery/dotstate/dot/internal/macos"
 	"github.com/dnery/dotstate/dot/internal/modules"
 	"github.com/dnery/dotstate/dot/internal/platform"
+	"github.com/dnery/dotstate/dot/internal/redact"
 	"github.com/dnery/dotstate/dot/internal/runner"
 	"github.com/dnery/dotstate/dot/internal/schedule"
 	"github.com/dnery/dotstate/dot/internal/sync"
@@ -301,16 +302,7 @@ func cmdBootstrap(a *app) *cobra.Command {
 				fmt.Println("Repo URL is empty; skipping clone and treating repo.path as an existing local checkout.")
 			}
 
-			fmt.Println(ui.Title("Bootstrap complete"))
-			fmt.Printf("  Repo: %s\n", cfg.Repo.Path)
-			fmt.Println()
-			fmt.Println("Next steps:")
-			fmt.Println("  1. cd", cfg.Repo.Path)
-			fmt.Println("  2. dot doctor")
-			fmt.Println("  3. dot apply --dry-run")
-			fmt.Println("  4. dot sync --dry-run")
-			fmt.Println("  5. dot macos audit --json")
-			fmt.Println("  6. dot schedule install")
+			printBootstrapComplete(cfg)
 
 			return nil
 		},
@@ -337,6 +329,19 @@ func (a *app) bootstrapConfig(repoURL string) (*config.Config, error) {
 	return cfg, nil
 }
 
+func printBootstrapComplete(cfg *config.Config) {
+	fmt.Println(ui.Title("Bootstrap complete"))
+	fmt.Printf("  Repo: %s\n", redact.Text(cfg.Repo.Path))
+	fmt.Println()
+	fmt.Println("Next steps:")
+	fmt.Println("  1. cd", redact.Text(cfg.Repo.Path))
+	fmt.Println("  2. dot doctor")
+	fmt.Println("  3. dot apply --dry-run")
+	fmt.Println("  4. dot sync --dry-run")
+	fmt.Println("  5. dot macos audit --json")
+	fmt.Println("  6. dot schedule install")
+}
+
 func printBootstrapPrerequisites(cfg *config.Config, skipOPCheckpoint bool) {
 	fmt.Println(ui.Title("Bootstrap checks"))
 	if runtime.GOOS == "darwin" {
@@ -350,7 +355,7 @@ func printBootstrapPrerequisites(cfg *config.Config, skipOPCheckpoint bool) {
 			fmt.Println("  Homebrew: not found")
 			fmt.Println("    Install from https://brew.sh, then run: brew install git chezmoi")
 		} else {
-			fmt.Printf("  Homebrew: %s\n", path)
+			fmt.Printf("  Homebrew: %s\n", redact.Text(path))
 		}
 	} else {
 		fmt.Printf("  Platform: %s/%s (macOS bootstrap checks skipped)\n", runtime.GOOS, runtime.GOARCH)
@@ -362,7 +367,7 @@ func printBootstrapPrerequisites(cfg *config.Config, skipOPCheckpoint bool) {
 		fmt.Println("  1Password/op checkpoint: op not found")
 		fmt.Println("    Install 1Password CLI, sign in to the desktop app, and enable CLI integration before applying secrets-backed state.")
 	} else {
-		fmt.Printf("  1Password/op checkpoint: %s\n", path)
+		fmt.Printf("  1Password/op checkpoint: %s\n", redact.Text(path))
 		fmt.Println("    Unlock 1Password and verify with: op account list")
 	}
 	fmt.Println()
@@ -522,8 +527,8 @@ func printRunReport(title string, report *modules.RunReport) {
 		return
 	}
 	plan := report.Plan
-	fmt.Printf("  Operation: %s\n", plan.Operation)
-	fmt.Printf("  Plan: %s\n", plan.PlanID)
+	fmt.Printf("  Operation: %s\n", redact.Text(string(plan.Operation)))
+	fmt.Printf("  Plan: %s\n", redact.Text(plan.PlanID))
 	fmt.Printf("  Summary: create=%d update=%d delete=%d noop=%d manual=%d blocked=%d\n",
 		plan.Summary.Create,
 		plan.Summary.Update,
@@ -533,7 +538,7 @@ func printRunReport(title string, report *modules.RunReport) {
 		plan.Summary.Blocked,
 	)
 	for _, change := range plan.Changes {
-		fmt.Printf("  - %s %s", humanAction(change.Action), change.ID)
+		fmt.Printf("  - %s %s", humanAction(change.Action), redact.Text(change.ID))
 		if len(change.Capability) > 0 {
 			fmt.Printf(" [%s]", joinCapabilities(change.Capability))
 		}
@@ -542,11 +547,11 @@ func printRunReport(title string, report *modules.RunReport) {
 		}
 		fmt.Println()
 		for _, diag := range change.Diagnostics {
-			fmt.Printf("      %s: %s\n", diag.Code, diag.Message)
+			fmt.Printf("      %s: %s\n", redact.Text(diag.Code), redact.Text(diag.Message))
 		}
 	}
 	for _, diag := range plan.Diagnostics {
-		fmt.Printf("  diagnostic %s: %s\n", diag.Code, diag.Message)
+		fmt.Printf("  diagnostic %s: %s\n", redact.Text(diag.Code), redact.Text(diag.Message))
 	}
 	if len(report.Backups) > 0 {
 		fmt.Printf("  Backups: %d\n", len(report.Backups))
@@ -554,11 +559,11 @@ func printRunReport(title string, report *modules.RunReport) {
 	if len(report.Results) > 0 {
 		fmt.Println("  Results:")
 		for _, result := range report.Results {
-			fmt.Printf("    - %s %s %s\n", result.Phase, result.ID, result.Status)
+			fmt.Printf("    - %s %s %s\n", redact.Text(string(result.Phase)), redact.Text(result.ID), redact.Text(string(result.Status)))
 		}
 	}
 	for _, diag := range report.Diagnostics {
-		fmt.Printf("  diagnostic %s: %s\n", diag.Code, diag.Message)
+		fmt.Printf("  diagnostic %s: %s\n", redact.Text(diag.Code), redact.Text(diag.Message))
 	}
 }
 
@@ -718,19 +723,27 @@ func printScheduleStatus(title string, status *schedule.Status) {
 		fmt.Println("  No schedule status available.")
 		return
 	}
-	fmt.Printf("  Label: %s\n", status.Label)
-	fmt.Printf("  Path: %s\n", status.Path)
+	fmt.Printf("  Label: %s\n", redact.Text(status.Label))
+	fmt.Printf("  Path: %s\n", redact.Text(status.Path))
 	fmt.Printf("  Installed: %t\n", status.Installed)
 	fmt.Printf("  Loaded: %t\n", status.Loaded)
 	if status.IntervalMinutes > 0 {
 		fmt.Printf("  Interval: %d minutes\n", status.IntervalMinutes)
 	}
 	if len(status.ProgramArgs) > 0 {
-		fmt.Printf("  Command: %s\n", strings.Join(status.ProgramArgs, " "))
+		fmt.Printf("  Command: %s\n", strings.Join(redactStrings(status.ProgramArgs), " "))
 	}
 	if status.Message != "" {
-		fmt.Printf("  Note: %s\n", status.Message)
+		fmt.Printf("  Note: %s\n", redact.Text(status.Message))
 	}
+}
+
+func redactStrings(values []string) []string {
+	out := make([]string, len(values))
+	for i, value := range values {
+		out[i] = redact.Text(value)
+	}
+	return out
 }
 
 func cmdDiscover(a *app) *cobra.Command {

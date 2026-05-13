@@ -48,3 +48,46 @@ func TestNewBootstrapAuditUnsupportedPlatformIsDiagnosticNotFailure(t *testing.T
 		t.Fatalf("capability = %#v, want unsupported", diag.Capability)
 	}
 }
+
+func TestNewBootstrapAuditIncludesPrivacyAndKeychainGuardrails(t *testing.T) {
+	const sentinel = "DOTSTATE_TEST_SECRET_DO_NOT_PRINT"
+	audit := NewBootstrapAudit("darwin", "arm64", sentinel, time.Unix(0, 0))
+	encoded, err := json.Marshal(audit)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if strings.Contains(string(encoded), sentinel) {
+		t.Fatalf("audit leaked sentinel: %s", encoded)
+	}
+
+	codes := map[string]modules.Diagnostic{}
+	for _, diag := range audit.Diagnostics {
+		codes[diag.Code] = diag
+	}
+	for _, want := range []string{
+		"macos.full_disk_access.manual_checkpoint",
+		"macos.tcc.reference_only",
+		"macos.keychain.reference_only",
+		"macos.mdm.report_only",
+		"macos.sip.protected_surface",
+	} {
+		if _, ok := codes[want]; !ok {
+			t.Fatalf("missing diagnostic %s in %#v", want, codes)
+		}
+	}
+	if keychain := codes["macos.keychain.reference_only"]; keychain.Sensitivity != modules.SensitivityRestricted || !strings.Contains(keychain.Message, "never read") {
+		t.Fatalf("keychain diagnostic is not reference-only/restricted: %#v", keychain)
+	}
+	if fullDisk := codes["macos.full_disk_access.manual_checkpoint"]; !hasCapability(fullDisk.Capability, modules.CapabilityRequiresFullDiskAccess) {
+		t.Fatalf("full disk diagnostic capabilities = %#v", fullDisk.Capability)
+	}
+}
+
+func hasCapability(capabilities []modules.Capability, want modules.Capability) bool {
+	for _, capability := range capabilities {
+		if capability == want {
+			return true
+		}
+	}
+	return false
+}

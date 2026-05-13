@@ -21,6 +21,13 @@ Environment:
 EOF
 }
 
+safe() {
+  printf '%s' "$1" | sed -E \
+    -e 's#([A-Za-z][A-Za-z0-9+.-]*://)[^/@[:space:]]+@#\1<redacted:credential>@#g' \
+    -e 's#DOTSTATE_TEST_SECRET_DO_NOT_PRINT#<redacted:secret>#g' \
+    -e 's#(([Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss][Ww][Dd]|[Pp][Ww][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn])[_-]?[A-Za-z0-9_-]*[=:])[^[:space:]]{8,}#<redacted:secret>#g'
+}
+
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --repo)
@@ -75,8 +82,8 @@ fi
 DOT_BIN="$INSTALL_DIR/dot"
 
 echo "dotstate macOS bootstrap"
-echo "  release asset: $DOWNLOAD_URL"
-echo "  install path:  $DOT_BIN"
+echo "  release asset: $(safe "$DOWNLOAD_URL")"
+echo "  install path:  $(safe "$DOT_BIN")"
 
 if xcode-select -p >/dev/null 2>&1; then
   echo "  Xcode Command Line Tools: detected"
@@ -86,7 +93,7 @@ else
 fi
 
 if command -v brew >/dev/null 2>&1; then
-  echo "  Homebrew: $(command -v brew)"
+  echo "  Homebrew: $(safe "$(command -v brew)")"
 else
   echo "  Homebrew: not found"
   echo "    Install from https://brew.sh, then run: brew install git chezmoi"
@@ -99,10 +106,10 @@ else
 fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
-  echo "dry-run: would download $DOWNLOAD_URL"
-  echo "dry-run: would install dot to $DOT_BIN"
+  echo "dry-run: would download $(safe "$DOWNLOAD_URL")"
+  echo "dry-run: would install dot to $(safe "$DOT_BIN")"
   if [ -n "$REPO_URL" ] && [ "$SKIP_BOOTSTRAP" -eq 0 ]; then
-    echo "dry-run: would run $DOT_BIN bootstrap --repo $REPO_URL"
+    echo "dry-run: would run $(safe "$DOT_BIN") bootstrap --repo $(safe "$REPO_URL")"
   fi
   echo "dry-run: verification commands after bootstrap: dot doctor; dot apply --dry-run; dot sync --dry-run; dot macos audit --json"
   exit 0
@@ -119,12 +126,12 @@ curl -fsSL "$DOWNLOAD_URL" -o "$TMPDIR/$ASSET"
 tar -xzf "$TMPDIR/$ASSET" -C "$TMPDIR"
 install -m 0755 "$TMPDIR/dot-darwin-arm64/dot" "$DOT_BIN"
 
-echo "installed: $DOT_BIN"
+echo "installed: $(safe "$DOT_BIN")"
 
 if [ -n "$REPO_URL" ] && [ "$SKIP_BOOTSTRAP" -eq 0 ]; then
   "$DOT_BIN" bootstrap --repo "$REPO_URL"
 else
-  echo "next: run $DOT_BIN bootstrap --repo <repo-url>"
+  echo "next: run $(safe "$DOT_BIN") bootstrap --repo <repo-url>"
 fi
 
 echo "validation commands:"
