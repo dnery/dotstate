@@ -14,8 +14,9 @@
 A full `dot sync` runs these phases, in order:
 
 1. **Capture**
-   - Pulls changes from destination files back into the repo’s Chezmoi source state.
-   - Implementation: `chezmoi --source <repo>/<chex.source_dir> re-add`.
+   - Pulls changes from destination files back into the repo’s Chezmoi source state through the module orchestrator.
+   - Current files-module implementation: `chezmoi --source <repo>/<chex.source_dir> re-add`.
+   - `--dry-run` emits the shared module plan and does not run `re-add`.
 
 2. **Commit**
    - If the repo has changes, create a local commit.
@@ -26,8 +27,8 @@ A full `dot sync` runs these phases, in order:
    - Default behavior uses `git pull --rebase --autostash` to reduce friction.
 
 4. **Apply**
-   - Apply desired state from repo to destination files.
-   - Implementation: `chezmoi apply` with the configured source directory.
+   - Apply desired state from repo to destination files through the module orchestrator.
+   - Current files-module implementation: plan with `chezmoi diff`, backup managed destination files before writes, apply with `chezmoi apply`, then verify with a second diff.
 
 5. **Push**
    - Push local commits to the configured remote branch.
@@ -48,6 +49,10 @@ This order is deliberate:
   - Runs capture + commit + pull/rebase + apply, but does not push.
   - Useful when you want to converge locally first or you’re offline.
 
+- `dot sync --dry-run`
+  - Refuses a dirty repo the same way normal sync does.
+  - Emits capture/apply module plans without running `chezmoi re-add`, committing, pulling, applying, or pushing.
+
 - `dot sync now`
   - Alias for `dot sync`.
   - Intended for “I need this on the other machine right now”.
@@ -65,7 +70,8 @@ If pull/rebase results in conflicts:
 
 ### Dirty repo state
 If the repo already has staged/untracked changes unrelated to dot operations:
-- In v1, `dot sync` should refuse and explain.
+- `dot sync` refuses before capture and prints the porcelain status plus recovery guidance.
+- Use `dot capture` when you only want to update managed artifacts, or commit/stash unrelated repo work before syncing.
 - Later versions may optionally stash/restore with careful scoping.
 
 ### Tool missing

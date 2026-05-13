@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -17,6 +18,7 @@ import (
 	doterrors "github.com/dnery/dotstate/dot/internal/errors"
 	"github.com/dnery/dotstate/dot/internal/gitx"
 	"github.com/dnery/dotstate/dot/internal/logging"
+	"github.com/dnery/dotstate/dot/internal/modules"
 	"github.com/dnery/dotstate/dot/internal/platform"
 	"github.com/dnery/dotstate/dot/internal/runner"
 	"github.com/dnery/dotstate/dot/internal/sync"
@@ -160,11 +162,12 @@ func (a *app) loadConfig() (*config.Config, string, error) {
 	return cfg, repoRoot, nil
 }
 
-func newSyncer(cfg *config.Config) *sync.Syncer {
+func newSyncer(cfg *config.Config, home string) *sync.Syncer {
 	r := runner.New()
 	g := gitx.New(cfg.Tools.Git, r)
 	ch := chez.New(cfg.Tools.Chezmoi, r)
-	return sync.New(cfg, g, ch)
+	files := modules.NewFilesModule(cfg, ch, home)
+	return sync.NewWithModules(cfg, g, ch, modules.NewOrchestrator(files))
 }
 
 func cmdDoctor(a *app) *cobra.Command {
@@ -311,7 +314,9 @@ func cmdBootstrap(a *app) *cobra.Command {
 }
 
 func cmdApply(a *app) *cobra.Command {
-	return &cobra.Command{
+	var dryRun bool
+
+	cmd := &cobra.Command{
 		Use:   "apply",
 		Short: "Apply desired state to this machine",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -324,19 +329,30 @@ func cmdApply(a *app) *cobra.Command {
 				a.logger.Info("applying configuration", "source", cfg.SourcePath())
 			}
 
-			s := newSyncer(cfg)
-			if err := s.Apply(context.Background()); err != nil {
+			s := newSyncer(cfg, a.plat.Home)
+			report, err := s.ApplyWithOptions(context.Background(), sync.RunOptions{DryRun: dryRun})
+			if err != nil {
 				return doterrors.Wrap(err, "apply failed")
+			}
+			if dryRun {
+				printRunReport("Apply plan", report)
+				return nil
 			}
 
 			fmt.Println(ui.Title("Apply complete"))
+			printRunReport("Apply result", report)
 			return nil
 		},
 	}
+
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show the module plan without applying changes")
+	return cmd
 }
 
 func cmdCapture(a *app) *cobra.Command {
-	return &cobra.Command{
+	var dryRun bool
+
+	cmd := &cobra.Command{
 		Use:   "capture",
 		Short: "Capture local changes back into the repo",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -349,20 +365,30 @@ func cmdCapture(a *app) *cobra.Command {
 				a.logger.Info("capturing changes", "source", cfg.SourcePath())
 			}
 
-			s := newSyncer(cfg)
-			if err := s.Capture(context.Background()); err != nil {
+			s := newSyncer(cfg, a.plat.Home)
+			report, err := s.CaptureWithOptions(context.Background(), sync.RunOptions{DryRun: dryRun})
+			if err != nil {
 				return doterrors.Wrap(err, "capture failed")
+			}
+			if dryRun {
+				printRunReport("Capture plan", report)
+				return nil
 			}
 
 			fmt.Println(ui.Title("Capture complete"))
+			printRunReport("Capture result", report)
 			return nil
 		},
 	}
+
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show the module plan without capturing changes")
+	return cmd
 }
 
 func cmdSync(a *app) *cobra.Command {
 	var noApply bool
 	var noPush bool
+	var dryRun bool
 
 	syncCmd := &cobra.Command{
 		Use:   "sync",
@@ -371,6 +397,7 @@ func cmdSync(a *app) *cobra.Command {
 
 	syncCmd.PersistentFlags().BoolVar(&noApply, "no-apply", false, "Do not apply after pulling")
 	syncCmd.PersistentFlags().BoolVar(&noPush, "no-push", false, "Do not push after syncing")
+	syncCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", false, "Show module plans without capture, git, apply, or push mutations")
 
 	run := func(cmd *cobra.Command, args []string) error {
 		cfg, _, err := a.loadConfig()
@@ -385,12 +412,18 @@ func cmdSync(a *app) *cobra.Command {
 			)
 		}
 
-		s := newSyncer(cfg)
-		if err := s.Sync(context.Background(), sync.Options{NoApply: noApply, NoPush: noPush}); err != nil {
+		s := newSyncer(cfg, a.plat.Home)
+		report, err := s.SyncWithReport(context.Background(), sync.Options{NoApply: noApply, NoPush: noPush, DryRun: dryRun})
+		if err != nil {
 			return doterrors.Wrap(err, "sync failed")
+		}
+		if dryRun {
+			printSyncReport("Sync plan", report)
+			return nil
 		}
 
 		fmt.Println(ui.Title("Sync complete"))
+		printSyncReport("Sync result", report)
 		return nil
 	}
 
@@ -403,6 +436,93 @@ func cmdSync(a *app) *cobra.Command {
 	})
 
 	return syncCmd
+}
+
+func printSyncReport(title string, report *sync.SyncReport) {
+	fmt.Println(ui.Title(title))
+	if report == nil || len(report.Operations) == 0 {
+		fmt.Println("  No module operations recorded.")
+		return
+	}
+	for _, operation := range report.Operations {
+		printRunReport("", operation)
+	}
+}
+
+func printRunReport(title string, report *modules.RunReport) {
+	if title != "" {
+		fmt.Println(ui.Title(title))
+	}
+	if report == nil || report.Plan == nil {
+		fmt.Println("  No module plan recorded.")
+		return
+	}
+	plan := report.Plan
+	fmt.Printf("  Operation: %s\n", plan.Operation)
+	fmt.Printf("  Plan: %s\n", plan.PlanID)
+	fmt.Printf("  Summary: create=%d update=%d delete=%d noop=%d manual=%d blocked=%d\n",
+		plan.Summary.Create,
+		plan.Summary.Update,
+		plan.Summary.Delete,
+		plan.Summary.Noop,
+		plan.Summary.Manual,
+		plan.Summary.Blocked,
+	)
+	for _, change := range plan.Changes {
+		fmt.Printf("  - %s %s", humanAction(change.Action), change.ID)
+		if len(change.Capability) > 0 {
+			fmt.Printf(" [%s]", joinCapabilities(change.Capability))
+		}
+		if change.BackupRequired {
+			fmt.Print(" backup-required")
+		}
+		fmt.Println()
+		for _, diag := range change.Diagnostics {
+			fmt.Printf("      %s: %s\n", diag.Code, diag.Message)
+		}
+	}
+	for _, diag := range plan.Diagnostics {
+		fmt.Printf("  diagnostic %s: %s\n", diag.Code, diag.Message)
+	}
+	if len(report.Backups) > 0 {
+		fmt.Printf("  Backups: %d\n", len(report.Backups))
+	}
+	if len(report.Results) > 0 {
+		fmt.Println("  Results:")
+		for _, result := range report.Results {
+			fmt.Printf("    - %s %s %s\n", result.Phase, result.ID, result.Status)
+		}
+	}
+	for _, diag := range report.Diagnostics {
+		fmt.Printf("  diagnostic %s: %s\n", diag.Code, diag.Message)
+	}
+}
+
+func humanAction(action modules.ChangeAction) string {
+	switch action {
+	case modules.ActionCreate:
+		return "Would create"
+	case modules.ActionUpdate:
+		return "Would update"
+	case modules.ActionDelete:
+		return "Would remove"
+	case modules.ActionNoop, modules.ActionReport:
+		return "No change"
+	case modules.ActionManual:
+		return "Manual step"
+	case modules.ActionBlocked:
+		return "Blocked"
+	default:
+		return string(action)
+	}
+}
+
+func joinCapabilities(capabilities []modules.Capability) string {
+	parts := make([]string, 0, len(capabilities))
+	for _, capability := range capabilities {
+		parts = append(parts, string(capability))
+	}
+	return strings.Join(parts, ",")
 }
 
 func cmdDiscover(a *app) *cobra.Command {

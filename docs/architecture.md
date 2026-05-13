@@ -13,7 +13,8 @@
 ## Main Components
 
 - `dot` CLI (`cmd/dot`, `internal/cli`): orchestration and UX.
-- Chezmoi wrapper (`internal/chez`): apply, add, re-add, managed list.
+- Module orchestrator (`internal/modules`): shared lifecycle, plan/result/diagnostic/backup records, and ordered module execution.
+- Chezmoi-backed files module (`internal/modules`, `internal/chez`): file plans, backups, apply, capture, verify, add, re-add, managed list.
 - Git wrapper (`internal/gitx`): commit/pull/rebase/push operations.
 - Discover engine (`internal/discover`): scan, classify, secret detection, prompting.
 - Platform/config/logging (`internal/platform`, `internal/config`, `internal/logging`).
