@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -47,6 +48,9 @@ func (p *Prompter) SelectCandidates(ctx context.Context, result *Result) ([]*Can
 
 	// Print summary
 	summary := result.Summary()
+	fmt.Fprintln(p.out, "\nDiscovery Review TUI")
+	fmt.Fprintln(p.out, "Recommended items are pre-selected; Maybe items need review; Risky items may contain secrets; ignored items are summarized below.")
+	fmt.Fprintln(p.out, "Non-file macOS state is better handled by dot macos audit --json and future module capture flows.")
 	fmt.Fprintf(p.out, "\nDiscovered %d candidates:\n", len(result.Candidates))
 	if count := summary[CategoryRecommended]; count > 0 {
 		fmt.Fprintf(p.out, "  Recommended: %d\n", count)
@@ -61,6 +65,7 @@ func (p *Prompter) SelectCandidates(ctx context.Context, result *Result) ([]*Can
 		fmt.Fprintf(p.out, "  Sub-repos: %d\n", len(result.SubRepos))
 	}
 	fmt.Fprintln(p.out)
+	p.printIgnoredSummary(result)
 
 	// Group candidates by category
 	recommended := result.Candidates.ByCategory(CategoryRecommended)
@@ -121,7 +126,7 @@ func (p *Prompter) SelectCandidates(ctx context.Context, result *Result) ([]*Can
 	}
 
 	// Interactive selection
-	fmt.Fprintln(p.out, "Commands:")
+	fmt.Fprintln(p.out, "Discovery review commands:")
 	fmt.Fprintln(p.out, "  Enter  - Accept current selection")
 	fmt.Fprintln(p.out, "  a      - Select all")
 	fmt.Fprintln(p.out, "  n      - Select none")
@@ -188,6 +193,23 @@ func (p *Prompter) SelectCandidates(ctx context.Context, result *Result) ([]*Can
 }
 
 // printCandidate prints a single candidate line.
+func (p *Prompter) printIgnoredSummary(result *Result) {
+	if result == nil || len(result.Ignored) == 0 {
+		return
+	}
+	fmt.Fprintln(p.out, "Ignored by default:")
+	reasons := make([]string, 0, len(result.Ignored))
+	for reason := range result.Ignored {
+		reasons = append(reasons, reason)
+	}
+	sort.Strings(reasons)
+	for _, reason := range reasons {
+		fmt.Fprintf(p.out, "  %s: %d\n", redact.Text(reason), result.Ignored[reason])
+	}
+	fmt.Fprintln(p.out, "  Tip: use --deep or --roots for explicit broad scans; non-file macOS state is better handled by dot macos audit --json.")
+	fmt.Fprintln(p.out)
+}
+
 func (p *Prompter) printCandidate(index int, c *Candidate, prefix string) {
 	typeStr := ""
 	if c.IsSubRepo {
@@ -335,6 +357,7 @@ func (p *Prompter) PrintReport(result *Result) {
 		}
 		fmt.Fprintln(p.out)
 	}
+	p.printIgnoredSummary(result)
 
 	// Print by category
 	for _, cat := range []Category{CategoryRecommended, CategoryMaybe, CategoryRisky} {

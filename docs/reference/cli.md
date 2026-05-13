@@ -88,9 +88,13 @@ Flags:
 - `--yes`, `-y`
 - `--dry-run`
 - `--no-commit`
-- `--deep`
+- `--deep`: expands into broad roots such as `~/.config`, `~/Library/Application Support`, and `~/Library/Preferences`; default discovery stays curated.
 - `--report`: prints a redacted report and a `secrets.gitleaks.unavailable` diagnostic when the external scanner is not installed.
 - `--secrets <error|warning|ignore>`
+- `--roots <path[,path...]>`: override the scan roots explicitly for advanced/deep investigations.
+- `--max-file-size <bytes>`: override the default candidate file-size cutoff.
+
+Default discovery now uses curated dotfiles and app config files plus user-maintained registries under `state/discover/`: `curated-roots.txt` adds high-signal roots and `ignore.txt` excludes glob/substring patterns. Broad app inventories, Homebrew, `mas`, LaunchAgents, defaults, profiles, privacy/TCC, subrepos, and Keychain/secret posture should come from `dot macos audit --json` rather than filesystem crawling.
 
 ## Exit Codes
 

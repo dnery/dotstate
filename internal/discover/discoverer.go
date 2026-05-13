@@ -11,6 +11,7 @@ import (
 	"github.com/dnery/dotstate/dot/internal/chez"
 	"github.com/dnery/dotstate/dot/internal/config"
 	"github.com/dnery/dotstate/dot/internal/gitx"
+	"github.com/dnery/dotstate/dot/internal/modules"
 	"github.com/dnery/dotstate/dot/internal/platform"
 	"github.com/dnery/dotstate/dot/internal/redact"
 	"github.com/dnery/dotstate/dot/internal/runner"
@@ -112,6 +113,65 @@ func normalizeManagedPaths(paths []string, home string) map[string]bool {
 	return managed
 }
 
+func readDiscoverRegistries(cfg *config.Config, home string) ([]string, []string) {
+	if cfg == nil {
+		return nil, nil
+	}
+	registryDir := filepath.Join(cfg.StatePath(), "discover")
+	curated := expandDiscoverRoots(readRegistryLines(filepath.Join(registryDir, "curated-roots.txt")), home)
+	ignored := readRegistryLines(filepath.Join(registryDir, "ignore.txt"))
+	return curated, ignored
+}
+
+func readRegistryLines(path string) []string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var lines []string
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+func expandDiscoverRoots(paths []string, home string) []string {
+	roots := make([]string, 0, len(paths))
+	for _, path := range paths {
+		path = strings.TrimSpace(os.ExpandEnv(path))
+		if path == "" {
+			continue
+		}
+		if strings.HasPrefix(path, "~/") || strings.HasPrefix(path, `~\`) {
+			path = filepath.Join(home, path[2:])
+		} else if !filepath.IsAbs(path) {
+			path = filepath.Join(home, path)
+		}
+		roots = append(roots, filepath.Clean(path))
+	}
+	return roots
+}
+
+func (d *Discoverer) addTypedModuleGuidance(result *Result) {
+	if d == nil || d.plat == nil || d.plat.OS != platform.Darwin || result == nil {
+		return
+	}
+	diag := modules.NewDiagnostic(
+		modules.SeverityInfo,
+		"discover.macos.typed_modules_preferred",
+		"macOS apps, Homebrew, mas, launchd, defaults, profiles, privacy/TCC, subrepos, and secrets are better handled through typed module facts than broad ~/Library crawling.",
+		"discover",
+		"discover:macos:typed_modules",
+	)
+	diag.Remediation = "Run dot macos audit --json for normalized non-file facts. Use dot discover --deep or --roots only when you intentionally want filesystem candidates."
+	diag.Capability = []modules.Capability{modules.CapabilityReadOnly}
+	result.Diagnostics = append(result.Diagnostics, diag)
+}
+
 // NewDiscoverer creates a new discoverer.
 func NewDiscoverer(cfg *config.Config, opts Options) (*Discoverer, error) {
 	opts, err := normalizeOptions(opts)
@@ -130,14 +190,17 @@ func NewDiscoverer(cfg *config.Config, opts Options) (*Discoverer, error) {
 
 	r := runner.New()
 
+	curatedRoots, ignorePatterns := readDiscoverRegistries(cfg, plat.Home)
 	scanOpts := ScanOptions{
-		Deep:          opts.Deep,
-		MaxFileSize:   opts.MaxFileSize,
-		IncludeHidden: true,
-		Home:          plat.Home,
-		ManagedPaths:  make(map[string]bool),
-		Roots:         opts.Roots,
-		Platform:      plat,
+		Deep:           opts.Deep,
+		MaxFileSize:    opts.MaxFileSize,
+		IncludeHidden:  true,
+		Home:           plat.Home,
+		ManagedPaths:   make(map[string]bool),
+		Roots:          expandDiscoverRoots(opts.Roots, plat.Home),
+		CuratedRoots:   curatedRoots,
+		IgnorePatterns: ignorePatterns,
+		Platform:       plat,
 	}
 
 	// Get managed paths from chezmoi to exclude
@@ -171,6 +234,8 @@ func (d *Discoverer) Run(ctx context.Context, opts Options) error {
 	if err != nil {
 		return fmt.Errorf("scan failed: %w", err)
 	}
+
+	d.addTypedModuleGuidance(result)
 
 	// Run secret detection on candidates
 	if opts.SecretsMode != SecretsModeIgnore {

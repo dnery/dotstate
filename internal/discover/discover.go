@@ -131,6 +131,12 @@ type ScanOptions struct {
 
 	// ManagedPaths are paths already managed by chezmoi (to exclude).
 	ManagedPaths map[string]bool
+
+	// CuratedRoots are user-maintained high-signal roots added to the default set.
+	CuratedRoots []string
+
+	// IgnorePatterns are user-maintained glob/substring patterns to exclude.
+	IgnorePatterns []string
 }
 
 // DefaultMaxFileSize is 2 MiB.
@@ -169,6 +175,9 @@ type Result struct {
 	// Diagnostics contains structured non-fatal scanner/tooling warnings that
 	// are safe to print in reports.
 	Diagnostics []modules.Diagnostic
+
+	// Ignored summarizes why candidates were filtered before classification.
+	Ignored map[string]int
 }
 
 // Summary returns counts by category.

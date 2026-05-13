@@ -4,7 +4,7 @@
 
 It scans for high‑signal configuration files that exist on the machine but are **not yet tracked** in the repo, lets you review/preview them, and then adds the selected ones to the repo's managed state (Chezmoi source under `home/`).
 
-> **Implementation Status:** Phase 2 complete with selected Phase 3 hardening landed. Core discovery, classification, secret detection, sub-repo handling, `--no-commit`, and `--secrets {error|warning|ignore}` are implemented. Interactive TUI is still planned.
+> **Implementation Status:** Phase 3 noise reduction landed. Core discovery, classification, secret detection, sub-repo handling, `--no-commit`, `--secrets {error|warning|ignore}`, `--roots`, `--max-file-size`, curated fast roots, user registries, typed-module guidance, and interactive review explanations are implemented.
 
 The intent is that you can run this on:
 - macOS (your M4 Max MacBook Pro) — **primary target**
@@ -134,7 +134,7 @@ dot discover [flags]
   - Does not actually add or commit
 
 - `--deep`
-  - Adds broader roots (AppData/Library) and increases scan scope
+  - Adds broader roots (`~/.config`, AppData/Library) and increases scan scope
   - Applies stricter filtering on expanded directories
 
 - `--report`
@@ -148,14 +148,13 @@ dot discover [flags]
   - Default: `error`
   - Passed through to `chezmoi add --secrets=...`
 
-### Planned flags (Phase 3+)
-
 - `--roots <path1,path2,...>`
   - Override root set entirely (advanced)
+  - Supports repeated/comma-separated values
 
 - `--max-file-size <bytes>`
   - Default: 2 MiB
-  - Files larger than this are classified as Maybe or excluded
+  - Files larger than this are excluded unless they have a known config extension
 
 ---
 
@@ -166,25 +165,27 @@ dot discover [flags]
 These are chosen for speed and high yield.
 
 **All OS**
-- `$HOME/.config`
-- `$HOME/.ssh` (classified as Risky)
+- Curated home dotfiles such as `.zshrc`, `.gitconfig`, `.vimrc`, `.tmux.conf`, `.npmrc`, and shell profiles.
+- Curated XDG config files/directories only, e.g. `~/.config/git/config`, `fish/config.fish`, `nvim/init.lua`, `nvim/lua`, `starship.toml`, `wezterm.lua`, Ghostty/Kitty/Alacritty/AeroSpace/Karabiner/skhd/yabai config files.
+- User-maintained `state/discover/curated-roots.txt` entries.
 
 **macOS**
-- `$HOME/.zshrc`, `$HOME/.bashrc`, etc. (shell configs)
+- Curated editor config files such as VS Code/Cursor `settings.json`, `keybindings.json`, and `snippets`, plus Zed `settings.json`, `keymap.json`, and `tasks.json`.
+- Non-file state (apps, Homebrew, `mas`, LaunchAgents, defaults, profiles, privacy/TCC, subrepos, secrets) is handled by `dot macos audit --json`, not by broad crawling.
 
 **Windows**
-- `%APPDATA%\` (Roaming) **only for curated app folders**
-- Curated single files:
+- Curated single files only:
   - Windows Terminal `settings.json`
   - PowerShell profile(s)
+  - VS Code `settings.json` / `keybindings.json`
 
 **Linux**
-- `$HOME/.config` (XDG standard)
-- Shell configs in `$HOME`
+- Curated XDG config files/directories and shell configs in `$HOME`; broad `~/.config` requires `--deep`.
 
 ### Deep roots (`--deep`)
 
 **macOS**
+- `$HOME/.config`
 - `$HOME/Library/Application Support`
 - `$HOME/Library/Preferences`
 
@@ -203,19 +204,23 @@ Deep mode must be strict about ignores (see below).
 Exclude any path that matches:
 
 **Caches / logs / crash dumps:**
-- `Cache`, `Caches`, `GPUCache`, `Code Cache`, `ShaderCache`
+- `Cache`, `Caches`, `GPUCache`, `Code Cache`, `ShaderCache`, `CacheStorage`, `workspaceStorage`
 - `Crash`, `Crashpad`, `Crashes`
 - `Logs`, `log`, `Trace`, `traces`
 - `Temp`, `tmp`
 
 **"Clearly not config" bulk:**
-- `node_modules`
+- `node_modules`, `vendor`, virtualenvs, build outputs, language-server payloads, package-manager stores, generated `.app` bundles, source maps, and common generated build/cache directories such as `.next`, `.turbo`, `.parcel-cache`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `DerivedData`, `SourcePackages`, `Products`, and `Archives`.
 - `Steam`, `Epic`, game install directories
 - Large media directories
 
 **Browser data (tracked via dedicated modules later):**
 - Firefox profile trees (`Firefox/Profiles`, `Mozilla/Firefox/Profiles`)
-- Chrome/Edge profile trees (`Chrome/User Data`, `Microsoft/Edge/User Data`)
+- Chrome/Edge/Safari/Brave/Arc profile trees and files such as History, Cookies, IndexedDB, Local Storage, browser SQLite/LevelDB databases.
+
+**User registries:**
+- `state/discover/ignore.txt` contains glob or substring patterns to exclude from future scans.
+- `state/discover/curated-roots.txt` contains absolute, `~`-relative, or home-relative paths that should be added to fast roots.
 
 ### File size rules
 
@@ -409,8 +414,8 @@ When user confirms selection:
 ## Testing checklist
 
 ### macOS
-- [x] `dot discover` should show `.config` candidates
-- [x] It must not show caches or browser profiles by default
+- [x] `dot discover` should show curated `.config` candidates without scanning broad `~/.config` unless `--deep` is set
+- [x] It must not show caches, generated app bundles, source maps, browser databases, or browser profiles by default
 - [x] Adding a file should create it under `home/` (covered by harness and tests)
 
 ### Windows
@@ -430,9 +435,13 @@ When user confirms selection:
 
 ---
 
-## Extension points (future)
+## Extension points
 
+Implemented:
 - User-maintained ignore rules: `state/discover/ignore.txt`
-- Curated candidates in repo: `state/discover/curated.toml`
+- User-maintained curated roots: `state/discover/curated-roots.txt`
+- Interactive text TUI/review that explains categories, ignored groups, and typed-module handoff guidance
+
+Future:
 - Watch mode: file system watcher for new config files
-- Interactive TUI with Bubble Tea (Phase 3)
+- Rich Bubble Tea UI if the text review stops being sufficient

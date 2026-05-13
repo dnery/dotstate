@@ -119,3 +119,45 @@ func TestPrintReportRedactsSentinelValues(t *testing.T) {
 		t.Fatalf("report missing redaction marker or diagnostic:\n%s", out.String())
 	}
 }
+
+func TestSelectCandidatesExplainsClassificationTUI(t *testing.T) {
+	result := &Result{
+		Candidates: CandidateList{{RelPath: "~/.zshrc", Category: CategoryRecommended, Reasons: []string{"home dotfile"}}},
+		Ignored:    map[string]int{"cache/vendor/browser/generated directory": 2},
+	}
+	out := &bytes.Buffer{}
+	p := NewPrompterWithIO(strings.NewReader("q\n"), out, false)
+
+	selected, err := p.SelectCandidates(nil, result)
+	if err != nil {
+		t.Fatalf("SelectCandidates error = %v", err)
+	}
+	if len(selected) != 0 {
+		t.Fatalf("selected = %d, want 0 after quit", len(selected))
+	}
+	got := out.String()
+	for _, want := range []string{"Discovery Review TUI", "Recommended items are pre-selected", "Risky items may contain secrets", "dot macos audit --json", "Ignored by default"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("interactive output missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestPrintReportExplainsIgnoredAndTypedModuleGuidance(t *testing.T) {
+	result := &Result{
+		Candidates: CandidateList{{RelPath: "~/.zshrc", Category: CategoryRecommended, Reasons: []string{"home dotfile"}}},
+		Ignored: map[string]int{
+			"cache/vendor/browser/generated directory": 3,
+			"user ignore registry":                     1,
+		},
+	}
+	out := &bytes.Buffer{}
+	p := NewPrompterWithIO(strings.NewReader(""), out, false)
+
+	p.PrintReport(result)
+
+	got := out.String()
+	if !strings.Contains(got, "Ignored by default") || !strings.Contains(got, "dot macos audit --json") {
+		t.Fatalf("report did not explain ignored items/module guidance:\n%s", got)
+	}
+}

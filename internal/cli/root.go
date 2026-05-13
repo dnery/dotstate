@@ -770,6 +770,8 @@ func cmdDiscover(a *app) *cobra.Command {
 		deep        bool
 		reportOnly  bool
 		secretsMode string
+		roots       []string
+		maxFileSize int64
 	)
 
 	cmd := &cobra.Command{
@@ -800,12 +802,16 @@ Examples:
 			opts.Deep = deep
 			opts.ReportOnly = reportOnly
 			opts.SecretsMode = secretsMode
+			opts.Roots = roots
+			opts.MaxFileSize = maxFileSize
 
 			if a.logger != nil {
 				a.logger.Info("starting discovery",
 					"deep", deep,
 					"autoYes", autoYes,
 					"dryRun", dryRun,
+					"roots", roots,
+					"maxFileSize", maxFileSize,
 				)
 			}
 
@@ -828,6 +834,8 @@ Examples:
 	cmd.Flags().BoolVar(&deep, "deep", false, "Scan additional directories (AppData, Library)")
 	cmd.Flags().BoolVar(&reportOnly, "report", false, "Print report only (no prompts, no changes)")
 	cmd.Flags().StringVar(&secretsMode, "secrets", discover.SecretsModeError, "How to handle secrets: error, warning, ignore")
+	cmd.Flags().StringSliceVar(&roots, "roots", nil, "Override discovery roots (comma-separated or repeated; advanced)")
+	cmd.Flags().Int64Var(&maxFileSize, "max-file-size", discover.DefaultMaxFileSize, "Maximum candidate file size in bytes")
 
 	return cmd
 }

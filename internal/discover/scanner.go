@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/dnery/dotstate/dot/internal/platform"
@@ -32,6 +33,7 @@ func (s *Scanner) Scan(ctx context.Context) (*Result, error) {
 	result := &Result{
 		Candidates: make(CandidateList, 0),
 		SubRepos:   make([]*Candidate, 0),
+		Ignored:    make(map[string]int),
 	}
 
 	// Get roots to scan
@@ -70,11 +72,18 @@ func (s *Scanner) defaultRoots() []string {
 		}
 	}
 
-	roots := []string{
-		filepath.Join(home, ".config"),
+	roots := make([]string, 0)
+	addIfExists := func(path string) {
+		if strings.TrimSpace(path) == "" {
+			return
+		}
+		if _, err := os.Stat(path); err == nil {
+			roots = append(roots, path)
+		}
 	}
 
-	// Add curated home dotfiles
+	// Add curated home dotfiles. Broad home/.config scans are deep-only so the
+	// default macOS report stays actionable instead of listing vendor caches.
 	dotfiles := []string{
 		".gitconfig",
 		".gitignore_global",
@@ -90,10 +99,34 @@ func (s *Scanner) defaultRoots() []string {
 		".yarnrc",
 	}
 	for _, df := range dotfiles {
-		path := filepath.Join(home, df)
-		if _, err := os.Stat(path); err == nil {
-			roots = append(roots, path)
-		}
+		addIfExists(filepath.Join(home, df))
+	}
+
+	curatedXDG := []string{
+		"git/config",
+		"fish/config.fish",
+		"fish/conf.d",
+		"fish/functions",
+		"nvim/init.lua",
+		"nvim/init.vim",
+		"nvim/lua",
+		"nvim/lazy-lock.json",
+		"starship.toml",
+		"wezterm/wezterm.lua",
+		"ghostty/config",
+		"kitty/kitty.conf",
+		"alacritty/alacritty.toml",
+		"aerospace/aerospace.toml",
+		"karabiner/karabiner.json",
+		"skhd/skhdrc",
+		"yabai/yabairc",
+	}
+	for _, rel := range curatedXDG {
+		addIfExists(filepath.Join(home, ".config", rel))
+	}
+
+	for _, root := range s.opts.CuratedRoots {
+		addIfExists(root)
 	}
 
 	// Platform-specific roots
@@ -108,29 +141,36 @@ func (s *Scanner) defaultRoots() []string {
 	if plat != nil {
 		switch plat.OS {
 		case platform.Darwin:
+			// Always check for common macOS app configs that are known to be
+			// user-authored and relatively small. App inventory/defaults/launchd
+			// are now handled by `dot macos audit --json`.
+			macosApps := []string{
+				filepath.Join(home, "Library", "Application Support", "Code", "User", "settings.json"),
+				filepath.Join(home, "Library", "Application Support", "Code", "User", "keybindings.json"),
+				filepath.Join(home, "Library", "Application Support", "Code", "User", "snippets"),
+				filepath.Join(home, "Library", "Application Support", "Cursor", "User", "settings.json"),
+				filepath.Join(home, "Library", "Application Support", "Cursor", "User", "keybindings.json"),
+				filepath.Join(home, "Library", "Application Support", "Cursor", "User", "snippets"),
+				filepath.Join(home, "Library", "Application Support", "Zed", "settings.json"),
+				filepath.Join(home, "Library", "Application Support", "Zed", "keymap.json"),
+				filepath.Join(home, "Library", "Application Support", "Zed", "tasks.json"),
+			}
+			for _, app := range macosApps {
+				addIfExists(app)
+			}
+
 			if s.opts.Deep {
 				roots = append(roots,
+					filepath.Join(home, ".config"),
 					filepath.Join(home, "Library", "Application Support"),
 					filepath.Join(home, "Library", "Preferences"),
 				)
-			}
-			// Always check for common macOS app configs
-			macosApps := []string{
-				filepath.Join(home, "Library", "Application Support", "Code", "User"),
-				filepath.Join(home, "Library", "Application Support", "Cursor", "User"),
-				filepath.Join(home, "Library", "Application Support", "Zed"),
-			}
-			for _, app := range macosApps {
-				if _, err := os.Stat(app); err == nil {
-					roots = append(roots, app)
-				}
 			}
 
 		case platform.Windows:
 			appData := os.Getenv("APPDATA")
 			localAppData := os.Getenv("LOCALAPPDATA")
 
-			// Curated Windows paths
 			curated := []string{
 				filepath.Join(localAppData, "Packages", "Microsoft.WindowsTerminal_8wekyb3d8bbwe", "LocalState", "settings.json"),
 				filepath.Join(localAppData, "Packages", "Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe", "LocalState", "settings.json"),
@@ -140,9 +180,7 @@ func (s *Scanner) defaultRoots() []string {
 				filepath.Join(appData, "Code", "User", "keybindings.json"),
 			}
 			for _, path := range curated {
-				if _, err := os.Stat(path); err == nil {
-					roots = append(roots, path)
-				}
+				addIfExists(path)
 			}
 
 			if s.opts.Deep {
@@ -150,15 +188,15 @@ func (s *Scanner) defaultRoots() []string {
 			}
 
 		case platform.Linux:
-			// Fish config
 			fishConfig := filepath.Join(home, ".config", "fish")
-			if _, err := os.Stat(fishConfig); err == nil {
-				roots = append(roots, fishConfig)
+			addIfExists(fishConfig)
+			if s.opts.Deep {
+				roots = append(roots, filepath.Join(home, ".config"))
 			}
 		}
 	}
 
-	return roots
+	return uniqueStrings(roots)
 }
 
 // scanRoot scans a single root path.
@@ -199,8 +237,14 @@ func (s *Scanner) scanRoot(ctx context.Context, root string, result *Result) err
 		if d.IsDir() {
 			result.ScannedDirs++
 
+			if s.matchesIgnore(path) {
+				result.recordIgnored("user ignore registry")
+				return filepath.SkipDir
+			}
+
 			// Check if this directory should be excluded
 			if s.shouldExcludeDir(path, d.Name()) {
+				result.recordIgnored("cache/vendor/browser/generated directory")
 				return filepath.SkipDir
 			}
 
@@ -233,6 +277,17 @@ func (s *Scanner) processFile(ctx context.Context, path string, info os.FileInfo
 
 	// Skip if already managed
 	if s.opts.ManagedPaths[path] {
+		result.recordIgnored("already managed")
+		return nil
+	}
+
+	if s.matchesIgnore(path) {
+		result.recordIgnored("user ignore registry")
+		return nil
+	}
+
+	if s.shouldExcludeFile(path, filepath.Base(path)) {
+		result.recordIgnored("generated/cache/browser file")
 		return nil
 	}
 
@@ -240,6 +295,7 @@ func (s *Scanner) processFile(ctx context.Context, path string, info os.FileInfo
 	if s.opts.MaxFileSize > 0 && info.Size() > s.opts.MaxFileSize {
 		// Unless it's a config-ish extension
 		if !s.classifier.IsConfigExtension(path) {
+			result.recordIgnored("over max file size")
 			return nil
 		}
 	}
@@ -256,6 +312,10 @@ func (s *Scanner) processFile(ctx context.Context, path string, info os.FileInfo
 
 // shouldExcludeDir returns true if the directory should be skipped entirely.
 func (s *Scanner) shouldExcludeDir(path, name string) bool {
+	if strings.HasSuffix(name, ".app") {
+		return true
+	}
+
 	// Always skip these directories
 	excludeNames := []string{
 		// VCS
@@ -272,6 +332,17 @@ func (s *Scanner) shouldExcludeDir(path, name string) bool {
 		"build",
 		"dist",
 		"target",
+		"DerivedData",
+		"Archives",
+		"Products",
+		"SourcePackages",
+		".next",
+		".nuxt",
+		".turbo",
+		".parcel-cache",
+		".pytest_cache",
+		".mypy_cache",
+		".ruff_cache",
 		// Caches
 		"Cache",
 		"Caches",
@@ -281,6 +352,10 @@ func (s *Scanner) shouldExcludeDir(path, name string) bool {
 		"CachedData",
 		"CachedExtensions",
 		"CachedExtensionVSIXs",
+		"CacheStorage",
+		"workspaceStorage",
+		"LanguageServer",
+		"Language Servers",
 		// Logs and crashes
 		"Logs",
 		"logs",
@@ -301,6 +376,9 @@ func (s *Scanner) shouldExcludeDir(path, name string) bool {
 		"Session Storage",
 		"Service Worker",
 		"databases",
+		"Network",
+		"DawnCache",
+		"GrShaderCache",
 	}
 
 	for _, exclude := range excludeNames {
@@ -331,4 +409,74 @@ func (s *Scanner) shouldExcludeDir(path, name string) bool {
 	}
 
 	return false
+}
+
+func (s *Scanner) shouldExcludeFile(path, name string) bool {
+	lowerName := strings.ToLower(name)
+	if strings.HasSuffix(lowerName, ".map") || strings.HasSuffix(lowerName, ".app") {
+		return true
+	}
+	if matchesAny(lowerName, "history", "cookies", "login data", "web data") && containsAny(path, "Chrome", "Chromium", "BraveSoftware", "Edge", "Safari", "Firefox") {
+		return true
+	}
+	switch filepath.Ext(lowerName) {
+	case ".sqlite", ".sqlite3", ".db", ".ldb", ".log":
+		if containsAny(path, "Application Support", "User Data", "Profiles", "IndexedDB", "Local Storage", "Session Storage") {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Scanner) matchesIgnore(path string) bool {
+	if len(s.opts.IgnorePatterns) == 0 {
+		return false
+	}
+	rel := relPath(path, s.opts.Home)
+	base := filepath.Base(path)
+	for _, pattern := range s.opts.IgnorePatterns {
+		if pathMatchesPattern(pattern, path, rel, base) {
+			return true
+		}
+	}
+	return false
+}
+
+func pathMatchesPattern(pattern, path, rel, base string) bool {
+	pattern = strings.TrimSpace(pattern)
+	if pattern == "" {
+		return false
+	}
+	pattern = filepath.Clean(os.ExpandEnv(pattern))
+	candidates := []string{path, rel, strings.TrimPrefix(rel, "~/"), base}
+	for _, candidate := range candidates {
+		if matched, err := filepath.Match(pattern, candidate); err == nil && matched {
+			return true
+		}
+		if strings.Contains(candidate, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *Result) recordIgnored(reason string) {
+	if r.Ignored == nil {
+		r.Ignored = make(map[string]int)
+	}
+	r.Ignored[reason]++
+}
+
+func uniqueStrings(values []string) []string {
+	seen := make(map[string]bool, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
 }
