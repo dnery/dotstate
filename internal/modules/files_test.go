@@ -3,6 +3,7 @@ package modules
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -242,6 +243,70 @@ func TestFilesModuleBackupTaintsSecretPayloadWithoutSerializingIt(t *testing.T) 
 	}
 	if !strings.Contains(string(content), sentinel) {
 		t.Fatalf("backup payload should remain restorable local content")
+	}
+}
+
+func TestFilesModuleInterruptedApplyRestoresSecretTaintedBackup(t *testing.T) {
+	ctx := context.Background()
+	repoDir := testutil.TempDir(t)
+	homeDir := testutil.TempDir(t)
+	cfg := loadModuleTestConfig(t, repoDir)
+	const sentinel = "DOTSTATE_TEST_SECRET_DO_NOT_PRINT"
+	managedPath := testutil.TempFile(t, homeDir, ".env", "API_TOKEN="+sentinel+"\n")
+
+	r := &queuedRunner{t: t}
+	r.Expect("chezmoi", []string{"--source", filepath.Join(repoDir, "home"), "diff"}, "--- old\n+++ new\n", "", nil)
+	r.Expect("chezmoi", []string{"--source", filepath.Join(repoDir, "home"), "managed"}, ".env\n", "", nil)
+	r.Expect("chezmoi", []string{"--source", filepath.Join(repoDir, "home"), "apply"}, "", "interrupted", errors.New("interrupted apply"))
+
+	files := NewFilesModule(cfg, chez.New("chezmoi", r), homeDir)
+	orch := NewOrchestrator(files)
+	report, err := orch.Run(ctx, OperationApply, RunOptions{})
+	if err == nil || !strings.Contains(err.Error(), "interrupted apply") {
+		t.Fatalf("Run error = %v, want interrupted apply", err)
+	}
+	if len(report.Backups) != 1 {
+		t.Fatalf("backup count = %d, want 1", len(report.Backups))
+	}
+	backup := report.Backups[0]
+	if backup.Sensitivity != SensitivitySecret {
+		t.Fatalf("backup sensitivity = %q, want secret", backup.Sensitivity)
+	}
+	encoded, err := json.Marshal(report)
+	if err != nil {
+		t.Fatalf("Marshal report: %v", err)
+	}
+	if strings.Contains(string(encoded), sentinel) {
+		t.Fatalf("interrupted apply report leaked sentinel: %s", encoded)
+	}
+	payload, err := os.ReadFile(backup.PayloadRef.Path)
+	if err != nil {
+		t.Fatalf("read backup payload: %v", err)
+	}
+	if !strings.Contains(string(payload), sentinel) {
+		t.Fatalf("backup payload should keep local restorable secret content")
+	}
+
+	if err := os.WriteFile(managedPath, []byte("PARTIAL=1\n"), 0o644); err != nil {
+		t.Fatalf("write partial state: %v", err)
+	}
+	restoreReport, err := orch.Restore(ctx, report.Backups)
+	if err != nil {
+		t.Fatalf("Restore error = %v", err)
+	}
+	if len(restoreReport.Results) != 1 || restoreReport.Results[0].Status != StatusRestored {
+		t.Fatalf("unexpected restore report: %#v", restoreReport)
+	}
+	testutil.AssertFileContent(t, managedPath, "API_TOKEN="+sentinel+"\n")
+	restoredEncoded, err := json.Marshal(restoreReport)
+	if err != nil {
+		t.Fatalf("Marshal restore report: %v", err)
+	}
+	if strings.Contains(string(restoredEncoded), sentinel) {
+		t.Fatalf("restore report leaked sentinel: %s", restoredEncoded)
+	}
+	if r.remaining() != 0 {
+		t.Fatalf("not all expected commands were consumed: %d", r.remaining())
 	}
 }
 
