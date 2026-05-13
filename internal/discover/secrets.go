@@ -3,6 +3,7 @@ package discover
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"os"
 	"regexp"
 	"strconv"
@@ -120,6 +121,14 @@ func defaultSecretPatterns() []*secretPattern {
 
 // ScanFile scans a file for potential secrets.
 func (d *SecretDetector) ScanFile(ctx context.Context, path string) ([]SecretFinding, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("not a regular file: %s", path)
+	}
+
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -128,6 +137,7 @@ func (d *SecretDetector) ScanFile(ctx context.Context, path string) ([]SecretFin
 
 	var findings []SecretFinding
 	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 64*1024), 10*1024*1024)
 	lineNum := 0
 
 	for scanner.Scan() {
@@ -170,8 +180,7 @@ func (d *SecretDetector) ScanFiles(ctx context.Context, paths []string) (map[str
 
 		findings, err := d.ScanFile(ctx, path)
 		if err != nil {
-			// Log error but continue scanning other files
-			continue
+			return results, fmt.Errorf("scan %s: %w", path, err)
 		}
 
 		if len(findings) > 0 {
@@ -200,7 +209,7 @@ func (d *SecretDetector) ScanWithGitleaks(ctx context.Context, paths []string) (
 	for _, path := range paths {
 		findings, err := d.ScanFile(ctx, path)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("scan %s: %w", path, err)
 		}
 		allFindings = append(allFindings, findings...)
 	}
@@ -253,6 +262,14 @@ func (d *SecretDetector) UpdateCandidates(ctx context.Context, candidates Candid
 
 		findings, err := d.ScanFile(ctx, c.Path)
 		if err != nil {
+			// Candidate update is the discovery reporting boundary: keep the scan
+			// running, but make the unscanned file loud and non-preselected instead
+			// of silently treating it as clean.
+			if c.Category == CategoryRecommended || c.Category == CategoryMaybe {
+				c.Category = CategoryRisky
+			}
+			c.SecretWarnings = append(c.SecretWarnings, "secret scan failed: "+err.Error())
+			c.Reasons = append(c.Reasons, "secret scan failed")
 			continue
 		}
 

@@ -35,7 +35,7 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           OUT_DIR="state/e2e-runs/ci-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}"
-          ./test/e2e/discover_harness.sh --dot-bin ./bin/dot --scenario discover-fast --out-dir "$OUT_DIR"
+          ./test/e2e/discover_harness.sh --dot-bin ./bin/dot --scenario discover-fast --out-dir "$OUT_DIR" --strict
           cat "$OUT_DIR/summary.md" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run harness (windows)
@@ -43,7 +43,7 @@ jobs:
         shell: pwsh
         run: |
           $OutDir = "state/e2e-runs/ci-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}"
-          pwsh -File .\test\e2e\discover_harness_windows.ps1 -DotBin .\bin\dot.exe -Scenario discover-fast -OutDir $OutDir
+          pwsh -File .\test\e2e\discover_harness_windows.ps1 -DotBin .\bin\dot.exe -Scenario discover-fast -OutDir $OutDir -Strict
           Get-Content -Path "$OutDir/summary.md" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
 
       - name: Upload harness artifacts

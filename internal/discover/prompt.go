@@ -12,8 +12,8 @@ import (
 
 // Prompter handles user interaction for file selection.
 type Prompter struct {
-	in     io.Reader
-	out    io.Writer
+	in      io.Reader
+	out     io.Writer
 	autoYes bool
 }
 
@@ -217,13 +217,16 @@ func (p *Prompter) parseSelection(input string, selected map[int]*Candidate,
 			continue
 		}
 
-		// Handle +N (add) or -N (remove) syntax
+		// Handle +N (add), -N (remove), or bare N (toggle) syntax.
 		add := true
+		explicitAction := false
 		if strings.HasPrefix(part, "+") {
 			part = strings.TrimPrefix(part, "+")
+			explicitAction = true
 		} else if strings.HasPrefix(part, "-") {
 			add = false
 			part = strings.TrimPrefix(part, "-")
+			explicitAction = true
 		}
 
 		num, err := strconv.Atoi(part)
@@ -244,6 +247,11 @@ func (p *Prompter) parseSelection(input string, selected map[int]*Candidate,
 		if candidate == nil {
 			fmt.Fprintf(p.out, "Invalid item number: %d\n", num)
 			continue
+		}
+
+		if !explicitAction {
+			_, alreadySelected := selected[num]
+			add = !alreadySelected
 		}
 
 		if add {
@@ -343,7 +351,8 @@ func (p *Prompter) PrintReport(result *Result) {
 				}
 			}
 			if c.IsSubRepo && c.SubRepoURL != "" {
-				fmt.Fprintf(p.out, "       remote: %s\n", c.SubRepoURL)
+				url, _ := sanitizeGitRemoteURL(c.SubRepoURL)
+				fmt.Fprintf(p.out, "       remote: %s\n", url)
 			}
 		}
 		fmt.Fprintln(p.out)
@@ -356,6 +365,8 @@ func (p *Prompter) PrintReport(result *Result) {
 			url := r.SubRepoURL
 			if url == "" {
 				url = "(local only)"
+			} else {
+				url, _ = sanitizeGitRemoteURL(url)
 			}
 			fmt.Fprintf(p.out, "  %s -> %s\n", r.RelPath, url)
 		}

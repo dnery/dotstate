@@ -12,6 +12,8 @@ This directory is the canonical documentation set for `dotstate`.
 ## Specs
 
 - [Discover](specs/discover.md)
+- [Module and State Contract](specs/modules.md)
+- [macOS State Surfaces](specs/macos-state-surfaces.md)
 - [Sync](specs/sync.md)
 - [Scheduling](specs/scheduling.md)
 - [Secrets](specs/secrets.md)

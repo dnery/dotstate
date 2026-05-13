@@ -244,7 +244,16 @@ function Get-ReportCount {
 }
 
 $env:HOME = $FakeHome
+$env:USERPROFILE = $FakeHome
 $env:XDG_CONFIG_HOME = Join-Path $FakeHome ".config"
+$env:APPDATA = Join-Path $FakeHome "AppData\Roaming"
+$env:LOCALAPPDATA = Join-Path $FakeHome "AppData\Local"
+$homeRoot = [System.IO.Path]::GetPathRoot($FakeHome)
+if (-not [string]::IsNullOrEmpty($homeRoot)) {
+    $env:HOMEDRIVE = $homeRoot.TrimEnd('\')
+    $env:HOMEPATH = $FakeHome.Substring($env:HOMEDRIVE.Length)
+}
+New-Item -ItemType Directory -Path $env:XDG_CONFIG_HOME,$env:APPDATA,$env:LOCALAPPDATA -Force | Out-Null
 
 function Run-DiscoverFast {
     $doctorCode = Run-CommandCapture -Id "doctor" -Action { & $DotBinAbs doctor @(Get-DotArgs @()) }

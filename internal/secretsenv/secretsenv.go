@@ -17,11 +17,15 @@ import (
 )
 
 const (
-	defaultTimeout = 45 * time.Second
-	aggregateName  = "secrets"
+	defaultTimeout  = 45 * time.Second
+	aggregateName   = "secrets"
+	localNotePrefix = "local/"
 )
 
-var envNameRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+var (
+	envNameRE   = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	scopeNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*$`)
+)
 
 type Config struct {
 	OPBin             string           `json:"op_bin"`
@@ -97,6 +101,28 @@ type opListItem struct {
 	Category string `json:"category"`
 }
 
+type noteSource struct {
+	Account string
+	Vault   string
+}
+
+type localNote struct {
+	Scope  ScopeConfig
+	Source string
+}
+
+type aggregateOccurrence struct {
+	ScopeName string
+	Source    string
+	Value     string
+}
+
+type aggregateConflict struct {
+	Name        string
+	Occurrences []aggregateOccurrence
+	Different   bool
+}
+
 type app struct {
 	stdout io.Writer
 	stderr io.Writer
@@ -111,9 +137,28 @@ func Execute(args []string) int {
 	}
 	if err := a.run(args); err != nil {
 		fmt.Fprintf(a.stderr, "error: %v\n", err)
+		var exitErr *commandExitError
+		if errors.As(err, &exitErr) {
+			return exitErr.ExitCode()
+		}
 		return 1
 	}
 	return 0
+}
+
+type commandExitError struct {
+	code int
+}
+
+func (e *commandExitError) Error() string {
+	return fmt.Sprintf("command exited with status %d", e.code)
+}
+
+func (e *commandExitError) ExitCode() int {
+	if e.code < 0 {
+		return 1
+	}
+	return e.code
 }
 
 func (a *app) run(args []string) error {
@@ -223,6 +268,12 @@ func (c *Config) validate() error {
 		if scope.Name == "" || scope.Account == "" || scope.Vault == "" || scope.Item == "" {
 			return fmt.Errorf("scope entries require name, account, vault, and item")
 		}
+		if !validScopeName(scope.Name) {
+			return fmt.Errorf("invalid scope name %q (use letters, numbers, '_' or '-' only)", scope.Name)
+		}
+		if scope.Name == aggregateName {
+			return fmt.Errorf("scope name %q is reserved for the aggregate cache", scope.Name)
+		}
 		if seen[scope.Name] {
 			return fmt.Errorf("duplicate scope %q", scope.Name)
 		}
@@ -297,7 +348,7 @@ func (a *app) inventory(cfg *Config) error {
 func countExportableFieldLabels(item opItem, section string) int {
 	count := 0
 	for _, f := range item.Fields {
-		if f.Label != "notesPlain" && validEnvName(f.Label) && (section == "" || sameSection(f, section) || emptySection(f)) {
+		if exportableField(f, section) {
 			count++
 		}
 	}
@@ -578,51 +629,251 @@ func (a *app) refresh(cfg *Config, args []string) error {
 	if !all && scopeName == "" {
 		return fmt.Errorf("refresh requires --all or --scope <name>")
 	}
-	var scopes []ScopeConfig
 	if all {
-		scopes = cfg.Scopes
-	} else {
-		scope, ok := cfg.scope(scopeName)
-		if !ok {
-			return fmt.Errorf("unknown scope %q", scopeName)
-		}
-		scopes = []ScopeConfig{scope}
+		return a.refreshAllLocalNotes(cfg)
+	}
+
+	scope, ok := cfg.scope(scopeName)
+	if !ok {
+		return fmt.Errorf("unknown scope %q", scopeName)
+	}
+	_, err := a.refreshOneScope(context.Background(), cfg, scope)
+	return err
+}
+
+func (a *app) refreshAllLocalNotes(cfg *Config) error {
+	ctx := context.Background()
+	notes, err := a.discoverLocalNotes(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	if len(notes) == 0 {
+		return fmt.Errorf("no SECURE_NOTE items with title prefix %q found in configured local sources", localNotePrefix)
 	}
 
 	refreshed := map[string]map[string]fieldValue{}
-	for _, scope := range scopes {
-		item, err := a.getItem(context.Background(), cfg, scope.Account, scope.Vault, scope.Item, true)
+	sources := map[string]string{}
+	order := make([]string, 0, len(notes))
+	for _, note := range notes {
+		values, err := a.refreshOneScope(ctx, cfg, note.Scope)
 		if err != nil {
 			return err
 		}
-		values := exportableValues(item, scope.Section)
-		if len(values) == 0 {
-			return fmt.Errorf("scope %q returned no exportable fields", scope.Name)
-		}
-		if err := writeCacheSet(cfg.CacheDir, scope.Name, values); err != nil {
-			return err
-		}
-		refreshed[scope.Name] = values
-		fmt.Fprintf(a.stdout, "- refreshed %s (%d variables)\n", scope.Name, len(values))
+		refreshed[note.Scope.Name] = values
+		sources[note.Scope.Name] = note.Source
+		order = append(order, note.Scope.Name)
 	}
 
-	if all {
-		merged := map[string]fieldValue{}
-		exclude := cfg.aggregateExcludeSet()
-		for _, scope := range cfg.Scopes {
-			for k, v := range refreshed[scope.Name] {
-				if exclude[k] {
-					continue
-				}
-				merged[k] = v
+	merged, conflicts := aggregateValues(refreshed, sources, order, cfg.aggregateExcludeSet())
+	warnAggregateConflicts(a.stderr, conflicts)
+	if err := writeCacheSet(cfg.CacheDir, aggregateName, merged); err != nil {
+		return err
+	}
+	fmt.Fprintf(a.stdout, "- refreshed %s aggregate (%d variables)\n", aggregateName, len(merged))
+	return nil
+}
+
+func (a *app) refreshOneScope(ctx context.Context, cfg *Config, scope ScopeConfig) (map[string]fieldValue, error) {
+	item, err := a.getItem(ctx, cfg, scope.Account, scope.Vault, scope.Item, true)
+	if err != nil {
+		return nil, err
+	}
+	values := exportableValues(item, scope.Section)
+	if len(values) == 0 {
+		return nil, fmt.Errorf("scope %q returned no exportable fields", scope.Name)
+	}
+	if err := writeCacheSet(cfg.CacheDir, scope.Name, values); err != nil {
+		return nil, err
+	}
+	fmt.Fprintf(a.stdout, "- refreshed %s (%d variables)\n", scope.Name, len(values))
+	return values, nil
+}
+
+func (a *app) discoverLocalNotes(ctx context.Context, cfg *Config) ([]localNote, error) {
+	type discoveredLocalNote struct {
+		Source noteSource
+		Item   opListItem
+	}
+
+	sources := localNoteSources(cfg)
+	discovered := make([]discoveredLocalNote, 0, len(cfg.Scopes))
+	for _, source := range sources {
+		items, err := a.listItems(ctx, cfg, source.Account, source.Vault)
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range items {
+			if !isSecureNoteCategory(item.Category) || !strings.HasPrefix(item.Title, localNotePrefix) {
+				continue
+			}
+			discovered = append(discovered, discoveredLocalNote{Source: source, Item: item})
+		}
+	}
+	sort.Slice(discovered, func(i, j int) bool {
+		left, right := discovered[i], discovered[j]
+		if left.Source.Account != right.Source.Account {
+			return left.Source.Account < right.Source.Account
+		}
+		if left.Source.Vault != right.Source.Vault {
+			return left.Source.Vault < right.Source.Vault
+		}
+		if left.Item.Title != right.Item.Title {
+			return left.Item.Title < right.Item.Title
+		}
+		return left.Item.ID < right.Item.ID
+	})
+
+	notes := make([]localNote, 0, len(discovered))
+	assignedNames := map[string]bool{}
+	reservedNames := cfg.reservedScopeNames()
+	for _, found := range discovered {
+		scopes := cfg.configuredScopesForLocalNote(found.Source.Account, found.Source.Vault, found.Item)
+		if len(scopes) == 0 {
+			scopes = []ScopeConfig{{
+				Name:    uniqueLocalNoteScopeName(found.Source.Vault, found.Item.Title, reservedNames, assignedNames),
+				Account: found.Source.Account,
+				Vault:   found.Source.Vault,
+				Item:    found.Item.ID,
+			}}
+		}
+		for _, scope := range scopes {
+			if assignedNames[scope.Name] {
+				return nil, fmt.Errorf("multiple local notes match configured scope %q; configure the item UUID to disambiguate", scope.Name)
+			}
+			assignedNames[scope.Name] = true
+			notes = append(notes, localNote{
+				Scope:  scope,
+				Source: formatNoteSource(found.Source.Account, found.Source.Vault, found.Item.Title, scope.Name),
+			})
+		}
+	}
+	return notes, nil
+}
+
+func localNoteSources(cfg *Config) []noteSource {
+	seen := map[string]bool{}
+	var sources []noteSource
+	add := func(account, vault string) {
+		if account == "" || vault == "" {
+			return
+		}
+		key := account + "\x00" + vault
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		sources = append(sources, noteSource{Account: account, Vault: vault})
+	}
+	for _, scope := range cfg.Scopes {
+		add(scope.Account, scope.Vault)
+	}
+	for _, target := range cfg.MutationAllowlist {
+		add(target.Account, target.Vault)
+	}
+	sort.Slice(sources, func(i, j int) bool {
+		if sources[i].Account != sources[j].Account {
+			return sources[i].Account < sources[j].Account
+		}
+		return sources[i].Vault < sources[j].Vault
+	})
+	return sources
+}
+
+func (c *Config) configuredScopesForLocalNote(account, vault string, item opListItem) []ScopeConfig {
+	var scopes []ScopeConfig
+	for _, scope := range c.Scopes {
+		if scope.Account == account && scope.Vault == vault && (scope.Item == item.Title || scope.Item == item.ID) {
+			scopes = append(scopes, scope)
+		}
+	}
+	return scopes
+}
+
+func (c *Config) reservedScopeNames() map[string]bool {
+	reserved := map[string]bool{aggregateName: true}
+	for _, scope := range c.Scopes {
+		reserved[scope.Name] = true
+	}
+	return reserved
+}
+
+func uniqueLocalNoteScopeName(vault, title string, reservedNames, assignedNames map[string]bool) string {
+	name := localNoteScopeName(vault, title)
+	base := name
+	for suffix := 2; reservedNames[name] || assignedNames[name]; suffix++ {
+		name = fmt.Sprintf("%s-%d", base, suffix)
+	}
+	return name
+}
+
+func localNoteScopeName(vault, title string) string {
+	name := strings.ToLower(vault + "-" + strings.TrimPrefix(title, localNotePrefix))
+	name = regexp.MustCompile(`[^a-z0-9_-]+`).ReplaceAllString(name, "-")
+	name = strings.Trim(name, "-_")
+	if name == "" || !validScopeName(name) || name == aggregateName {
+		return "local-note"
+	}
+	return name
+}
+
+func formatNoteSource(account, vault, title, scope string) string {
+	return fmt.Sprintf("%s/%s %q (cache scope %s)", account, vault, title, scope)
+}
+
+func aggregateValues(refreshed map[string]map[string]fieldValue, sources map[string]string, order []string, exclude map[string]bool) (map[string]fieldValue, []aggregateConflict) {
+	merged := map[string]fieldValue{}
+	occurrences := map[string][]aggregateOccurrence{}
+	for _, scopeName := range order {
+		for key, value := range refreshed[scopeName] {
+			if exclude[key] {
+				continue
+			}
+			occurrences[key] = append(occurrences[key], aggregateOccurrence{ScopeName: scopeName, Source: sources[scopeName], Value: value.Value})
+			merged[key] = value
+		}
+	}
+
+	var conflicts []aggregateConflict
+	for key, seen := range occurrences {
+		if len(seen) < 2 {
+			continue
+		}
+		conflict := aggregateConflict{Name: key, Occurrences: seen}
+		first := seen[0].Value
+		for _, occurrence := range seen[1:] {
+			if occurrence.Value != first {
+				conflict.Different = true
+				break
 			}
 		}
-		if err := writeCacheSet(cfg.CacheDir, aggregateName, merged); err != nil {
-			return err
-		}
-		fmt.Fprintf(a.stdout, "- refreshed %s aggregate (%d variables)\n", aggregateName, len(merged))
+		conflicts = append(conflicts, conflict)
 	}
-	return nil
+	sort.Slice(conflicts, func(i, j int) bool { return conflicts[i].Name < conflicts[j].Name })
+	return merged, conflicts
+}
+
+func warnAggregateConflicts(w io.Writer, conflicts []aggregateConflict) {
+	if len(conflicts) == 0 {
+		return
+	}
+	fmt.Fprintln(w, "🚨🚨🚨 SECRETS-ENV OVERRIDE CONFLICTS DETECTED 🚨🚨🚨")
+	fmt.Fprintln(w, "🔥🔥🔥 SCREAMING CAPS WARNING: DUPLICATE ENV VARS WERE FOUND ACROSS local/... NOTES 🔥🔥🔥")
+	fmt.Fprintln(w, "⚠️  VALUES ARE REDACTED. THE LAST NOTE LISTED FOR EACH VARIABLE WINS IN THE AGGREGATE CACHE. ⚠️")
+	for _, conflict := range conflicts {
+		kind := "DUPLICATE SAME-VALUE DECLARATION"
+		if conflict.Different {
+			kind = "DIFFERENT-VALUE OVERRIDE CONFLICT"
+		}
+		fmt.Fprintf(w, "🚨 %s: %s\n", kind, conflict.Name)
+		for i, occurrence := range conflict.Occurrences {
+			winner := "OVERRIDDEN"
+			if i == len(conflict.Occurrences)-1 {
+				winner = "WINNER / FINAL VALUE"
+			}
+			fmt.Fprintf(w, "   💥 %s — %s\n", winner, occurrence.Source)
+		}
+	}
+	fmt.Fprintln(w, "🚨🚨🚨 FIX THE DUPLICATE local/... NOTES OR ACCEPT THE OVERRIDE ORDER ABOVE. 🚨🚨🚨")
 }
 
 func exportableValues(item opItem, section string) map[string]fieldValue {
@@ -643,7 +894,7 @@ func exportableField(f opField, section string) bool {
 	if section == "" {
 		return true
 	}
-	return sameSection(f, section) || emptySection(f)
+	return sameSection(f, section)
 }
 
 func sameSection(f opField, section string) bool {
@@ -658,8 +909,8 @@ func emptySection(f opField) bool {
 }
 
 func writeCacheSet(cacheDir, name string, values map[string]fieldValue) error {
-	if err := os.MkdirAll(cacheDir, 0o700); err != nil {
-		return fmt.Errorf("create cache dir: %w", err)
+	if err := ensureSecureCacheDir(cacheDir); err != nil {
+		return err
 	}
 	if err := writeAtomic(filepath.Join(cacheDir, name+".env"), []byte(renderPOSIX(values))); err != nil {
 		return err
@@ -669,6 +920,40 @@ func writeCacheSet(cacheDir, name string, values map[string]fieldValue) error {
 	}
 	if err := writeAtomic(filepath.Join(cacheDir, name+".ps1"), []byte(renderPowerShell(values))); err != nil {
 		return err
+	}
+	return nil
+}
+
+func ensureSecureCacheDir(cacheDir string) error {
+	if err := os.MkdirAll(cacheDir, 0o700); err != nil {
+		return fmt.Errorf("create cache dir: %w", err)
+	}
+	linkInfo, err := os.Lstat(cacheDir)
+	if err != nil {
+		return fmt.Errorf("stat cache dir: %w", err)
+	}
+	if linkInfo.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("cache dir must not be a symlink: %s", cacheDir)
+	}
+	info, err := os.Stat(cacheDir)
+	if err != nil {
+		return fmt.Errorf("stat cache dir: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("cache path is not a directory: %s", cacheDir)
+	}
+	if err := verifyCacheDirOwner(info); err != nil {
+		return err
+	}
+	if err := os.Chmod(cacheDir, 0o700); err != nil {
+		return fmt.Errorf("chmod cache dir: %w", err)
+	}
+	info, err = os.Stat(cacheDir)
+	if err != nil {
+		return fmt.Errorf("stat cache dir after chmod: %w", err)
+	}
+	if !cacheDirModeIsPrivate(info) {
+		return fmt.Errorf("cache dir has insecure mode %04o: %s", info.Mode().Perm(), cacheDir)
 	}
 	return nil
 }
@@ -697,7 +982,7 @@ func writeAtomic(path string, content []byte) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close temp cache: %w", err)
 	}
-	if err := os.Rename(tmpName, path); err != nil {
+	if err := replaceFile(tmpName, path); err != nil {
 		return fmt.Errorf("install cache: %w", err)
 	}
 	if err := os.Chmod(path, 0o600); err != nil {
@@ -770,28 +1055,56 @@ func powerShellSingleQuote(s string) string {
 }
 
 func (a *app) status(cfg *Config) error {
+	seen := map[string]bool{aggregateName: true}
 	names := []string{aggregateName}
 	for _, scope := range cfg.Scopes {
+		if seen[scope.Name] {
+			continue
+		}
+		seen[scope.Name] = true
 		names = append(names, scope.Name)
+	}
+	entries, err := os.ReadDir(cfg.CacheDir)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("read cache dir: %w", err)
+	}
+	if err == nil {
+		var discovered []string
+		for _, entry := range entries {
+			name, ok := strings.CutSuffix(entry.Name(), ".env")
+			if !ok || seen[name] {
+				continue
+			}
+			seen[name] = true
+			discovered = append(discovered, name)
+		}
+		sort.Strings(discovered)
+		names = append(names, discovered...)
 	}
 	for _, name := range names {
 		path := filepath.Join(cfg.CacheDir, name+".env")
 		info, err := os.Stat(path)
 		if err != nil {
-			fmt.Fprintf(a.stdout, "- %s: missing\n", name)
-			continue
+			if os.IsNotExist(err) {
+				fmt.Fprintf(a.stdout, "- %s: missing\n", name)
+				continue
+			}
+			return fmt.Errorf("stat cache %s: %w", name, err)
 		}
 		mode := info.Mode().Perm()
-		count := countCacheExports(path)
+		count, err := countCacheExports(path)
+		if err != nil {
+			return fmt.Errorf("read cache %s: %w", name, err)
+		}
 		fmt.Fprintf(a.stdout, "- %s: present mode=%04o vars=%d mtime=%s\n", name, mode, count, info.ModTime().Format(time.RFC3339))
 	}
 	return nil
 }
 
-func countCacheExports(path string) int {
+func countCacheExports(path string) (int, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return 0
+		return 0, err
 	}
 	count := 0
 	for _, line := range strings.Split(string(b), "\n") {
@@ -799,7 +1112,7 @@ func countCacheExports(path string) int {
 			count++
 		}
 	}
-	return count
+	return count, nil
 }
 
 func (a *app) runCommand(cfg *Config, args []string) error {
@@ -821,9 +1134,9 @@ func (a *app) runCommand(cfg *Config, args []string) error {
 	if err := cmd.Run(); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			return fmt.Errorf("command exited with status %d", exitErr.ExitCode())
+			return &commandExitError{code: exitErr.ExitCode()}
 		}
-		return err
+		return fmt.Errorf("run command: %w", err)
 	}
 	return nil
 }
@@ -844,21 +1157,63 @@ func (a *app) getItem(ctx context.Context, cfg *Config, account, vault, item str
 	return parsed, nil
 }
 
-func (a *app) findItemID(ctx context.Context, cfg *Config, account, vault, title string) (string, bool, error) {
-	out, err := a.opOutput(ctx, cfg, "item", "list", "--vault", vault, "--account", account, "--format", "json")
+func (a *app) findItemID(ctx context.Context, cfg *Config, account, vault, identifier string) (string, bool, error) {
+	items, err := a.listItems(ctx, cfg, account, vault)
 	if err != nil {
 		return "", false, err
 	}
+	return findSecureNoteID(items, identifier)
+}
+
+func (a *app) listItems(ctx context.Context, cfg *Config, account, vault string) ([]opListItem, error) {
+	out, err := a.opOutput(ctx, cfg, "item", "list", "--vault", vault, "--account", account, "--format", "json")
+	if err != nil {
+		return nil, err
+	}
 	var items []opListItem
 	if err := json.Unmarshal(out, &items); err != nil {
-		return "", false, fmt.Errorf("parse op item list for %s/%s: %w", account, vault, err)
+		return nil, fmt.Errorf("parse op item list for %s/%s: %w", account, vault, err)
 	}
+	return items, nil
+}
+
+func findSecureNoteID(items []opListItem, identifier string) (string, bool, error) {
 	for _, item := range items {
-		if item.Title == title {
+		if item.ID == identifier {
+			if !isSecureNoteCategory(item.Category) {
+				return "", false, fmt.Errorf("item id %q is category %q, want SECURE_NOTE", identifier, item.Category)
+			}
 			return item.ID, true, nil
 		}
 	}
+
+	var secureMatches []opListItem
+	var otherMatches []opListItem
+	for _, item := range items {
+		if item.Title != identifier {
+			continue
+		}
+		if isSecureNoteCategory(item.Category) {
+			secureMatches = append(secureMatches, item)
+		} else {
+			otherMatches = append(otherMatches, item)
+		}
+	}
+
+	if len(secureMatches) > 1 {
+		return "", false, fmt.Errorf("multiple SECURE_NOTE items named %q; configure the item UUID instead", identifier)
+	}
+	if len(secureMatches) == 1 {
+		return secureMatches[0].ID, true, nil
+	}
+	if len(otherMatches) > 0 {
+		return "", false, fmt.Errorf("item %q exists but is not a SECURE_NOTE; refusing to create or mutate an ambiguous target", identifier)
+	}
 	return "", false, nil
+}
+
+func isSecureNoteCategory(category string) bool {
+	return strings.EqualFold(category, "SECURE_NOTE")
 }
 
 func (a *app) op(ctx context.Context, cfg *Config, stdin []byte, args ...string) error {
@@ -921,15 +1276,30 @@ func validEnvName(name string) bool {
 	return envNameRE.MatchString(name)
 }
 
+func validScopeName(name string) bool {
+	return scopeNameRE.MatchString(name)
+}
+
 func fieldTypeForLabel(label string) string {
 	upper := strings.ToUpper(label)
-	sensitiveTokens := []string{"KEY", "TOKEN", "SECRET", "PASSWORD", "PASS", "PWD", "PSWD", "CREDENTIAL", "AUTH", "SID", "SERVICE_ACCOUNT"}
-	for _, token := range sensitiveTokens {
-		if strings.Contains(upper, token) {
+	parts := labelParts(upper)
+
+	for _, part := range parts {
+		switch part {
+		case "SECRET", "TOKEN", "PASSWORD", "PASS", "PWD", "PSWD", "PRIVATE", "CREDENTIAL", "CREDENTIALS", "KEY", "SID":
 			return "CONCEALED"
 		}
 	}
+	if strings.Contains(upper, "SERVICE_ACCOUNT") || strings.Contains(upper, "JSON_B64") {
+		return "CONCEALED"
+	}
 	return "STRING"
+}
+
+func labelParts(label string) []string {
+	return strings.FieldsFunc(label, func(r rune) bool {
+		return (r < 'A' || r > 'Z') && (r < '0' || r > '9')
+	})
 }
 
 func hasFlag(args []string, flag string) bool {

@@ -82,8 +82,14 @@ func (c *Chezmoi) Add(ctx context.Context, repoPath, sourceDir string, files []s
 }
 
 // Managed returns the list of files managed by chezmoi.
-func (c *Chezmoi) Managed(ctx context.Context, repoPath string) ([]string, error) {
-	res, err := c.R.Run(ctx, repoPath, c.Bin, "managed")
+func (c *Chezmoi) Managed(ctx context.Context, repoPath, sourceDir string) ([]string, error) {
+	args := []string{}
+	if sourceDir != "" {
+		args = append(args, "--source", filepath.Join(repoPath, sourceDir))
+	}
+	args = append(args, "managed")
+
+	res, err := c.R.Run(ctx, repoPath, c.Bin, args...)
 	if err != nil {
 		return nil, err
 	}

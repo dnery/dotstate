@@ -225,6 +225,12 @@ func (s *Scanner) scanRoot(ctx context.Context, root string, result *Result) err
 func (s *Scanner) processFile(ctx context.Context, path string, info os.FileInfo, result *Result) error {
 	result.ScannedFiles++
 
+	// Only regular files are safe to classify and scan. Special files such as
+	// FIFOs can block indefinitely if later opened for secret scanning.
+	if !info.Mode().IsRegular() {
+		return nil
+	}
+
 	// Skip if already managed
 	if s.opts.ManagedPaths[path] {
 		return nil

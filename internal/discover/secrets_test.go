@@ -193,6 +193,31 @@ func TestSecretDetector_RedactsDisplayedMatches(t *testing.T) {
 	}
 }
 
+func TestSecretDetectorScanFileRejectsNonRegularFiles(t *testing.T) {
+	d := NewSecretDetector(nil)
+	_, err := d.ScanFile(context.Background(), t.TempDir())
+	if err == nil {
+		t.Fatal("expected ScanFile to reject a directory")
+	}
+	if !strings.Contains(err.Error(), "not a regular file") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestSecretDetectorUpdateCandidatesMarksScanErrorsRisky(t *testing.T) {
+	d := NewSecretDetector(nil)
+	candidates := CandidateList{{Path: filepath.Join(t.TempDir(), "missing.env"), Category: CategoryRecommended}}
+	if err := d.UpdateCandidates(context.Background(), candidates); err != nil {
+		t.Fatalf("UpdateCandidates() error = %v", err)
+	}
+	if candidates[0].Category != CategoryRisky {
+		t.Fatalf("scan-error candidate category = %v, want Risky", candidates[0].Category)
+	}
+	if len(candidates[0].SecretWarnings) == 0 || !strings.Contains(candidates[0].SecretWarnings[0], "secret scan failed") {
+		t.Fatalf("expected explicit scan warning, got %#v", candidates[0].SecretWarnings)
+	}
+}
+
 func TestSecretDetector_ConfidenceLevel(t *testing.T) {
 	d := NewSecretDetector(nil)
 

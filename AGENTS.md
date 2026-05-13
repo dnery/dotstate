@@ -28,5 +28,5 @@ Use `state/e2e-runs/<timestamp>/` outputs (`summary.md`, `summary.json`, `timeli
 
 ## Working Notes
 
-- Keep dated stocktake notes in `docs/stocktake-YYYY-MM-DD.md`.
+- Keep dated status notes in `docs/status-YYYY-MM-DD.md`.
 - Append commands run, results, and unresolved risks.

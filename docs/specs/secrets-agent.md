@@ -10,8 +10,9 @@ The single supported shell/env secret flow is:
 
 1. Keep canonical secret values in 1Password Secure Notes configured in `~/.config/dotstate/secrets-env.json`.
 2. Refresh local cache files explicitly with `secrets-env refresh --all` or `secrets-env refresh --scope <name>`.
-3. Store generated cache files under `~/.local/state/dotstate/secrets/`.
-4. Let shell startup source existing cache files without contacting 1Password.
+3. Treat `secrets-env refresh --all` as dynamic discovery: it lists configured 1Password source vaults, reads every Secure Note whose title starts with `local/`, and writes one cache per note plus the aggregate cache.
+4. Store generated cache files under `~/.local/state/dotstate/secrets/`.
+5. Let shell startup source existing cache files without contacting 1Password.
 
 Shell startup must stay quiet, deterministic, and non-interactive. It must not call `op`, perform secret refreshes, or depend on a per-command wrapper to provide normal shell variables.
 
@@ -22,7 +23,7 @@ Shell startup must stay quiet, deterministic, and non-interactive. It must not c
 - `inventory`: print redacted target/source metadata.
 - `migrate`: create or update allowed Secure Notes from configured migration sources.
 - `archive-sources`: archive migrated source items after parity is verified.
-- `refresh`: read configured Secure Notes and write cache files.
+- `refresh`: read Secure Notes and write cache files. `--all` discovers every `local/...` Secure Note in configured source vaults and screams with emoji-heavy warnings when duplicate variables would override each other in the aggregate cache.
 - `status`: report cache presence, mode, variable count, and mtime without printing values.
 - `run -- <command>`: execute a command with the aggregate POSIX cache sourced.
 
@@ -54,7 +55,7 @@ Each scope has:
 - `section`: optional section label used to select fields.
 - `mutate`: whether migration may update this target.
 
-Every scope must define `name`, `account`, `vault`, and `item`. Mutable scopes must also match `mutation_allowlist`.
+Every scope must define `name`, `account`, `vault`, and `item`. Mutable scopes must also match `mutation_allowlist`. The configured scopes and mutation allowlist also define which account/vault pairs `refresh --all` searches for `local/...` Secure Notes.
 
 ## Cache files
 
@@ -82,7 +83,7 @@ Rendered formats:
 - fish: `set -gx NAME 'value'`
 - PowerShell: `$env:NAME = 'value'`
 
-Only valid shell variable names are exported. Empty values and note metadata are skipped. The aggregate cache merges refreshed scopes and applies `aggregate_exclude`, so sensitive automation-only variables can remain scoped instead of becoming global shell state.
+Only valid shell variable names are exported. Empty values and note metadata are skipped. `local/...` notes store one environment variable per 1Password field. Secret values should use concealed/password fields; non-secret values may use text fields. The Secure Note body (`notesPlain`) is metadata only and is not parsed as dotenv. The aggregate cache merges refreshed notes in deterministic order and applies `aggregate_exclude`, so sensitive automation-only variables can remain scoped instead of becoming global shell state. If multiple `local/...` notes define the same variable, the last note wins and `secrets-env` prints a large redacted warning with each conflicting note title.
 
 ## Shell integration
 

@@ -235,14 +235,14 @@ func TestAddEmpty(t *testing.T) {
 func TestManaged(t *testing.T) {
 	mock := testutil.NewMockRunner(t)
 	mock.OnCommandSuccess(
-		testutil.MatchExact("chezmoi", "managed"),
+		testutil.MatchExact("chezmoi", "--source", "/repo/home", "managed"),
 		".gitconfig\n.zshrc\n.config/nvim/init.lua\n",
 	)
 
 	c := New("chezmoi", mock)
 	ctx := context.Background()
 
-	files, err := c.Managed(ctx, "/repo")
+	files, err := c.Managed(ctx, "/repo", "home")
 	if err != nil {
 		t.Fatalf("Managed() error = %v", err)
 	}
@@ -269,7 +269,7 @@ func TestManagedEmpty(t *testing.T) {
 	c := New("chezmoi", mock)
 	ctx := context.Background()
 
-	files, err := c.Managed(ctx, "/repo")
+	files, err := c.Managed(ctx, "/repo", "")
 	if err != nil {
 		t.Fatalf("Managed() error = %v", err)
 	}

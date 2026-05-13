@@ -42,6 +42,22 @@ func TestParseSelectionCategoryBoundaries(t *testing.T) {
 	}
 }
 
+func TestParseSelectionBareNumberTogglesExistingSelection(t *testing.T) {
+	recommended := CandidateList{{RelPath: "~/.gitconfig"}}
+	selected := map[int]*Candidate{1: recommended[0]}
+	out := &bytes.Buffer{}
+	p := NewPrompterWithIO(strings.NewReader(""), out, false)
+
+	p.parseSelection("1", selected, recommended, nil, nil, 2, 2)
+
+	if len(selected) != 0 {
+		t.Fatalf("expected bare number to toggle selection off, got %d selected", len(selected))
+	}
+	if !strings.Contains(out.String(), "Removed: ~/.gitconfig") {
+		t.Fatalf("expected removal message, got %q", out.String())
+	}
+}
+
 func TestParseSelectionRejectsOutOfRange(t *testing.T) {
 	selected := make(map[int]*Candidate)
 	out := &bytes.Buffer{}

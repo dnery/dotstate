@@ -1,6 +1,7 @@
 package discover
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -62,7 +63,7 @@ func TestScanIncludesDotfilesWhenMaxFileSizeUnset(t *testing.T) {
 		ManagedPaths: make(map[string]bool),
 	})
 
-	result, err := scanner.Scan(t.Context())
+	result, err := scanner.Scan(context.Background())
 	if err != nil {
 		t.Fatalf("scan: %v", err)
 	}

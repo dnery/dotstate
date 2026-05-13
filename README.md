@@ -32,6 +32,8 @@ make test-e2e
 - [CLI Reference](docs/reference/cli.md)
 - [Configuration Reference](docs/reference/configuration.md)
 - [Discover Spec](docs/specs/discover.md)
+- [Module and State Contract](docs/specs/modules.md)
+- [macOS State Surfaces](docs/specs/macos-state-surfaces.md)
 
 Legacy docs remain as compatibility pointers for one release cycle.
 

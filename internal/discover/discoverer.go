@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/dnery/dotstate/dot/internal/chez"
@@ -93,6 +94,23 @@ func normalizeOptions(opts Options) (Options, error) {
 	return opts, nil
 }
 
+func normalizeManagedPaths(paths []string, home string) map[string]bool {
+	managed := make(map[string]bool, len(paths))
+	for _, path := range paths {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			continue
+		}
+		if strings.HasPrefix(path, "~/") || strings.HasPrefix(path, `~\`) {
+			path = filepath.Join(home, path[2:])
+		} else if !filepath.IsAbs(path) {
+			path = filepath.Join(home, path)
+		}
+		managed[filepath.Clean(path)] = true
+	}
+	return managed
+}
+
 // NewDiscoverer creates a new discoverer.
 func NewDiscoverer(cfg *config.Config, opts Options) (*Discoverer, error) {
 	opts, err := normalizeOptions(opts)
@@ -123,11 +141,9 @@ func NewDiscoverer(cfg *config.Config, opts Options) (*Discoverer, error) {
 
 	// Get managed paths from chezmoi to exclude
 	ch := chez.New(cfg.Tools.Chezmoi, r)
-	managed, err := ch.Managed(context.Background(), cfg.RepoRoot())
+	managed, err := ch.Managed(context.Background(), cfg.RepoRoot(), cfg.Chex.SourceDir)
 	if err == nil {
-		for _, path := range managed {
-			scanOpts.ManagedPaths[path] = true
-		}
+		scanOpts.ManagedPaths = normalizeManagedPaths(managed, plat.Home)
 	}
 
 	return &Discoverer{
@@ -265,36 +281,50 @@ func (d *Discoverer) handleSubRepos(ctx context.Context, subRepos []*Candidate) 
 		return nil
 	}
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	fmt.Printf("\nFound %d sub-repositories:\n", len(subRepos))
+	var discovered []SubRepoManifest
 	for _, r := range subRepos {
 		url := r.SubRepoURL
+		redacted := false
+		if url != "" {
+			url, redacted = sanitizeGitRemoteURL(url)
+			r.SubRepoURL = url
+		}
+
 		if url == "" {
-			url = "(local only - will be skipped)"
-			fmt.Printf("  SKIP: %s %s\n", r.RelPath, url)
+			fmt.Printf("  SKIP: %s (local only - will be skipped)\n", r.RelPath)
+			continue
+		}
+
+		if redacted {
+			fmt.Printf("  OK: %s -> %s (credentials redacted)\n", r.RelPath, url)
 		} else {
 			fmt.Printf("  OK: %s -> %s\n", r.RelPath, url)
 		}
+		discovered = append(discovered, SubRepoManifest{
+			Path:   r.RelPath,
+			URL:    url,
+			Branch: r.SubRepoBranch,
+		})
 	}
 
-	// Create manifest for sub-repos with remotes
-	var manifests []SubRepoManifest
-	for _, r := range subRepos {
-		if r.SubRepoURL != "" {
-			manifests = append(manifests, SubRepoManifest{
-				Path:   r.RelPath,
-				URL:    r.SubRepoURL,
-				Branch: r.SubRepoBranch,
-			})
-		}
-	}
-
-	if len(manifests) == 0 {
+	if len(discovered) == 0 {
 		fmt.Println("No sub-repositories with remotes to track.")
 		return nil
 	}
 
-	fmt.Printf("\nSub-repository manifest (%d repos):\n", len(manifests))
-	for _, m := range manifests {
+	manifestPath := filepath.Join(d.cfg.StatePath(), "subrepos.toml")
+	manifest, err := mergeSubRepoManifest(manifestPath, discovered)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("\nSub-repository manifest (%d repos):\n", len(manifest.SubRepos))
+	for _, m := range manifest.SubRepos {
 		fmt.Printf("  [[subrepo]]\n")
 		fmt.Printf("  path = %q\n", m.Path)
 		fmt.Printf("  url = %q\n", m.URL)
@@ -304,13 +334,11 @@ func (d *Discoverer) handleSubRepos(ctx context.Context, subRepos []*Candidate) 
 		fmt.Println()
 	}
 
-	manifest := SubReposManifest{SubRepos: manifests}
 	data, err := toml.Marshal(manifest)
 	if err != nil {
 		return fmt.Errorf("marshal sub-repo manifest: %w", err)
 	}
 
-	manifestPath := filepath.Join(d.cfg.StatePath(), "subrepos.toml")
 	if err := os.MkdirAll(filepath.Dir(manifestPath), 0o755); err != nil {
 		return fmt.Errorf("create state directory: %w", err)
 	}
@@ -322,6 +350,56 @@ func (d *Discoverer) handleSubRepos(ctx context.Context, subRepos []*Candidate) 
 	fmt.Println("      During 'dot apply', these repos will be cloned/updated.")
 
 	return nil
+}
+
+func mergeSubRepoManifest(path string, discovered []SubRepoManifest) (SubReposManifest, error) {
+	byPath := map[string]SubRepoManifest{}
+
+	existing, err := readSubRepoManifest(path)
+	if err != nil {
+		return SubReposManifest{}, err
+	}
+	for _, entry := range existing.SubRepos {
+		entry.URL, _ = sanitizeGitRemoteURL(entry.URL)
+		byPath[entry.Path] = entry
+	}
+
+	for _, entry := range discovered {
+		entry.URL, _ = sanitizeGitRemoteURL(entry.URL)
+		if previous, ok := byPath[entry.Path]; ok && entry.Description == "" {
+			entry.Description = previous.Description
+		}
+		byPath[entry.Path] = entry
+	}
+
+	merged := make([]SubRepoManifest, 0, len(byPath))
+	for _, entry := range byPath {
+		merged = append(merged, entry)
+	}
+	sort.Slice(merged, func(i, j int) bool {
+		return merged[i].Path < merged[j].Path
+	})
+
+	return SubReposManifest{SubRepos: merged}, nil
+}
+
+func readSubRepoManifest(path string) (SubReposManifest, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return SubReposManifest{}, nil
+		}
+		return SubReposManifest{}, fmt.Errorf("read existing sub-repo manifest: %w", err)
+	}
+	if strings.TrimSpace(string(b)) == "" {
+		return SubReposManifest{}, nil
+	}
+
+	var manifest SubReposManifest
+	if err := toml.Unmarshal(b, &manifest); err != nil {
+		return SubReposManifest{}, fmt.Errorf("parse existing sub-repo manifest: %w", err)
+	}
+	return manifest, nil
 }
 
 // commit commits the added files.

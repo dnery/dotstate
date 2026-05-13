@@ -3,6 +3,7 @@ package discover
 import (
 	"bufio"
 	"context"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,8 +52,13 @@ func (d *SubRepoDetector) Analyze(ctx context.Context, path, home string) (*Cand
 	// Try to get the remote URL
 	remoteURL, err := d.getRemoteURL(path)
 	if err == nil && remoteURL != "" {
-		candidate.SubRepoURL = remoteURL
-		candidate.Reasons = append(candidate.Reasons, "has remote: "+remoteURL)
+		safeURL, redacted := sanitizeGitRemoteURL(remoteURL)
+		candidate.SubRepoURL = safeURL
+		remoteReason := "has remote: " + safeURL
+		if redacted {
+			remoteReason += " (credentials redacted)"
+		}
+		candidate.Reasons = append(candidate.Reasons, remoteReason)
 	} else {
 		// No remote - this is a local-only repo
 		candidate.Category = CategoryMaybe
@@ -168,6 +174,138 @@ func (d *SubRepoDetector) getCurrentBranch(repoPath string) (string, error) {
 	return "", nil
 }
 
+func sanitizeGitRemoteURL(raw string) (string, bool) {
+	trimmed := strings.TrimSpace(raw)
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return redactMalformedURLCredentials(trimmed)
+	}
+	queryRedacted := redactURLQueryCredentials(parsed)
+	if parsed.Scheme == "" || parsed.User == nil {
+		if queryRedacted {
+			return parsed.String(), true
+		}
+		return redactSCPRemoteCredentials(trimmed)
+	}
+	if parsed.Host == "" {
+		redacted, ok := redactMalformedURLCredentials(trimmed)
+		if ok {
+			return redacted, true
+		}
+		if queryRedacted {
+			return parsed.String(), true
+		}
+		return trimmed, false
+	}
+
+	if parsed.Scheme == "http" || parsed.Scheme == "https" {
+		parsed.User = nil
+		return parsed.String(), true
+	}
+
+	if _, hasPassword := parsed.User.Password(); hasPassword {
+		parsed.User = url.User(parsed.User.Username())
+		return parsed.String(), true
+	}
+
+	if queryRedacted {
+		return parsed.String(), true
+	}
+	return trimmed, false
+}
+
+func redactURLQueryCredentials(parsed *url.URL) bool {
+	if parsed.RawQuery == "" {
+		return false
+	}
+	query, err := url.ParseQuery(parsed.RawQuery)
+	if err != nil {
+		return false
+	}
+	redacted := false
+	for key, values := range query {
+		if sensitiveRemoteQueryKey(key) {
+			query[key] = []string{"REDACTED"}
+			redacted = true
+			continue
+		}
+		for i, value := range values {
+			if looksCredentialishUserinfo(value) {
+				values[i] = "REDACTED"
+				redacted = true
+			}
+		}
+	}
+	if redacted {
+		parsed.RawQuery = query.Encode()
+	}
+	return redacted
+}
+
+func sensitiveRemoteQueryKey(key string) bool {
+	normalized := strings.ToLower(strings.ReplaceAll(key, "-", "_"))
+	return strings.Contains(normalized, "token") ||
+		strings.Contains(normalized, "secret") ||
+		strings.Contains(normalized, "password") ||
+		normalized == "pass" ||
+		normalized == "key" ||
+		normalized == "api_key"
+}
+
+func redactMalformedURLCredentials(raw string) (string, bool) {
+	schemeEnd := strings.Index(raw, "://")
+	if schemeEnd < 0 {
+		return redactSCPRemoteCredentials(raw)
+	}
+	authorityStart := schemeEnd + len("://")
+	authorityEnd := len(raw)
+	if rel := strings.IndexAny(raw[authorityStart:], "/?#"); rel >= 0 {
+		authorityEnd = authorityStart + rel
+	}
+	authority := raw[authorityStart:authorityEnd]
+	at := strings.LastIndex(authority, "@")
+	if at < 0 {
+		return raw, false
+	}
+
+	scheme := strings.ToLower(raw[:schemeEnd])
+	userinfo := authority[:at]
+	host := authority[at+1:]
+	suffix := raw[authorityEnd:]
+	if scheme == "http" || scheme == "https" {
+		return raw[:authorityStart] + host + suffix, true
+	}
+	username, _, hasPassword := strings.Cut(userinfo, ":")
+	if hasPassword {
+		return raw[:authorityStart] + username + "@" + host + suffix, true
+	}
+	return raw, false
+}
+
+func redactSCPRemoteCredentials(raw string) (string, bool) {
+	at := strings.Index(raw, "@")
+	if at <= 0 || strings.ContainsAny(raw[:at], "/\\") {
+		return raw, false
+	}
+	userinfo := raw[:at]
+	if strings.Contains(userinfo, ":") || looksCredentialishUserinfo(userinfo) {
+		return raw[at+1:], true
+	}
+	return raw, false
+}
+
+func looksCredentialishUserinfo(userinfo string) bool {
+	lower := strings.ToLower(userinfo)
+	return strings.HasPrefix(lower, "ghp_") ||
+		strings.HasPrefix(lower, "gho_") ||
+		strings.HasPrefix(lower, "ghu_") ||
+		strings.HasPrefix(lower, "ghs_") ||
+		strings.HasPrefix(lower, "ghr_") ||
+		strings.HasPrefix(lower, "github_pat_") ||
+		strings.HasPrefix(lower, "glpat-") ||
+		strings.Contains(lower, "token")
+}
+
 // SubRepoManifest represents a sub-repository reference in the manifest.
 type SubRepoManifest struct {
 	// Path is the relative path from home where the repo should be cloned.
@@ -188,9 +326,10 @@ func (c *Candidate) ToManifest() *SubRepoManifest {
 	if !c.IsSubRepo {
 		return nil
 	}
+	safeURL, _ := sanitizeGitRemoteURL(c.SubRepoURL)
 	return &SubRepoManifest{
 		Path:   c.RelPath,
-		URL:    c.SubRepoURL,
+		URL:    safeURL,
 		Branch: c.SubRepoBranch,
 	}
 }
