@@ -1,0 +1,419 @@
+{
+  "schema_version": "dotstate.audit.v1",
+  "generated_at": "2026-05-13T00:00:00Z",
+  "target": {
+    "os": "darwin",
+    "arch": "arm64",
+    "host": "\u003credacted:hostname\u003e"
+  },
+  "facts": [],
+  "diagnostics": [
+    {
+      "schema_version": "dotstate.diagnostic.v1",
+      "severity": "info",
+      "code": "macos_audit_surface_pending",
+      "message": "Read-only macOS audit collection for this surface is pending; bootstrap can continue without elevated permissions.",
+      "remediation": "Use dot doctor, dot apply --dry-run, and dot sync --dry-run for current bootstrap validation; future audit modules will add facts here.",
+      "surface": "brew",
+      "id": "brew:audit",
+      "source": {
+        "kind": "module",
+        "value": "brew"
+      },
+      "current": null,
+      "desired": null,
+      "managed_by": [
+        "dotstate"
+      ],
+      "sensitivity": "public",
+      "confidence": "confirmed",
+      "capability": [
+        "read_only",
+        "dry_run_only"
+      ],
+      "risk": {
+        "level": "low",
+        "reasons": [],
+        "requires_confirmation": false,
+        "reversible": true
+      }
+    },
+    {
+      "schema_version": "dotstate.diagnostic.v1",
+      "severity": "info",
+      "code": "macos_audit_surface_pending",
+      "message": "Read-only macOS audit collection for this surface is pending; bootstrap can continue without elevated permissions.",
+      "remediation": "Use dot doctor, dot apply --dry-run, and dot sync --dry-run for current bootstrap validation; future audit modules will add facts here.",
+      "surface": "mas",
+      "id": "mas:audit",
+      "source": {
+        "kind": "module",
+        "value": "mas"
+      },
+      "current": null,
+      "desired": null,
+      "managed_by": [
+        "dotstate"
+      ],
+      "sensitivity": "public",
+      "confidence": "confirmed",
+      "capability": [
+        "read_only",
+        "dry_run_only"
+      ],
+      "risk": {
+        "level": "low",
+        "reasons": [],
+        "requires_confirmation": false,
+        "reversible": true
+      }
+    },
+    {
+      "schema_version": "dotstate.diagnostic.v1",
+      "severity": "info",
+      "code": "macos_audit_surface_pending",
+      "message": "Read-only macOS audit collection for this surface is pending; bootstrap can continue without elevated permissions.",
+      "remediation": "Use dot doctor, dot apply --dry-run, and dot sync --dry-run for current bootstrap validation; future audit modules will add facts here.",
+      "surface": "apps",
+      "id": "apps:audit",
+      "source": {
+        "kind": "module",
+        "value": "apps"
+      },
+      "current": null,
+      "desired": null,
+      "managed_by": [
+        "dotstate"
+      ],
+      "sensitivity": "public",
+      "confidence": "confirmed",
+      "capability": [
+        "read_only",
+        "dry_run_only"
+      ],
+      "risk": {
+        "level": "low",
+        "reasons": [],
+        "requires_confirmation": false,
+        "reversible": true
+      }
+    },
+    {
+      "schema_version": "dotstate.diagnostic.v1",
+      "severity": "info",
+      "code": "macos_audit_surface_pending",
+      "message": "Read-only macOS audit collection for this surface is pending; bootstrap can continue without elevated permissions.",
+      "remediation": "Use dot doctor, dot apply --dry-run, and dot sync --dry-run for current bootstrap validation; future audit modules will add facts here.",
+      "surface": "launchd",
+      "id": "launchd:audit",
+      "source": {
+        "kind": "module",
+        "value": "launchd"
+      },
+      "current": null,
+      "desired": null,
+      "managed_by": [
+        "dotstate"
+      ],
+      "sensitivity": "public",
+      "confidence": "confirmed",
+      "capability": [
+        "read_only",
+        "dry_run_only"
+      ],
+      "risk": {
+        "level": "low",
+        "reasons": [],
+        "requires_confirmation": false,
+        "reversible": true
+      }
+    },
+    {
+      "schema_version": "dotstate.diagnostic.v1",
+      "severity": "info",
+      "code": "macos_audit_surface_pending",
+      "message": "Read-only macOS audit collection for this surface is pending; bootstrap can continue without elevated permissions.",
+      "remediation": "Use dot doctor, dot apply --dry-run, and dot sync --dry-run for current bootstrap validation; future audit modules will add facts here.",
+      "surface": "defaults",
+      "id": "defaults:audit",
+      "source": {
+        "kind": "module",
+        "value": "defaults"
+      },
+      "current": null,
+      "desired": null,
+      "managed_by": [
+        "dotstate"
+      ],
+      "sensitivity": "public",
+      "confidence": "confirmed",
+      "capability": [
+        "read_only",
+        "dry_run_only"
+      ],
+      "risk": {
+        "level": "low",
+        "reasons": [],
+        "requires_confirmation": false,
+        "reversible": true
+      }
+    },
+    {
+      "schema_version": "dotstate.diagnostic.v1",
+      "severity": "info",
+      "code": "macos_audit_surface_pending",
+      "message": "Read-only macOS audit collection for this surface is pending; bootstrap can continue without elevated permissions.",
+      "remediation": "Use dot doctor, dot apply --dry-run, and dot sync --dry-run for current bootstrap validation; future audit modules will add facts here.",
+      "surface": "profiles",
+      "id": "profiles:audit",
+      "source": {
+        "kind": "module",
+        "value": "profiles"
+      },
+      "current": null,
+      "desired": null,
+      "managed_by": [
+        "dotstate"
+      ],
+      "sensitivity": "public",
+      "confidence": "confirmed",
+      "capability": [
+        "read_only",
+        "dry_run_only"
+      ],
+      "risk": {
+        "level": "low",
+        "reasons": [],
+        "requires_confirmation": false,
+        "reversible": true
+      }
+    },
+    {
+      "schema_version": "dotstate.diagnostic.v1",
+      "severity": "info",
+      "code": "macos_audit_surface_pending",
+      "message": "Read-only macOS audit collection for this surface is pending; bootstrap can continue without elevated permissions.",
+      "remediation": "Use dot doctor, dot apply --dry-run, and dot sync --dry-run for current bootstrap validation; future audit modules will add facts here.",
+      "surface": "privacy_tcc",
+      "id": "privacy_tcc:audit",
+      "source": {
+        "kind": "module",
+        "value": "privacy_tcc"
+      },
+      "current": null,
+      "desired": null,
+      "managed_by": [
+        "dotstate"
+      ],
+      "sensitivity": "public",
+      "confidence": "confirmed",
+      "capability": [
+        "read_only",
+        "dry_run_only"
+      ],
+      "risk": {
+        "level": "low",
+        "reasons": [],
+        "requires_confirmation": false,
+        "reversible": true
+      }
+    },
+    {
+      "schema_version": "dotstate.diagnostic.v1",
+      "severity": "info",
+      "code": "macos_audit_surface_pending",
+      "message": "Read-only macOS audit collection for this surface is pending; bootstrap can continue without elevated permissions.",
+      "remediation": "Use dot doctor, dot apply --dry-run, and dot sync --dry-run for current bootstrap validation; future audit modules will add facts here.",
+      "surface": "secrets",
+      "id": "secrets:audit",
+      "source": {
+        "kind": "module",
+        "value": "secrets"
+      },
+      "current": null,
+      "desired": null,
+      "managed_by": [
+        "dotstate"
+      ],
+      "sensitivity": "public",
+      "confidence": "confirmed",
+      "capability": [
+        "read_only",
+        "dry_run_only"
+      ],
+      "risk": {
+        "level": "low",
+        "reasons": [],
+        "requires_confirmation": false,
+        "reversible": true
+      }
+    },
+    {
+      "schema_version": "dotstate.diagnostic.v1",
+      "severity": "warning",
+      "code": "macos.full_disk_access.manual_checkpoint",
+      "message": "Some macOS state can be hidden by privacy controls; dotstate reports the gap instead of requesting Full Disk Access automatically.",
+      "remediation": "Grant Full Disk Access to the terminal running dot only if you want complete inspection, then rerun dot macos audit --json.",
+      "surface": "privacy_tcc",
+      "id": "privacy_tcc:full_disk_access",
+      "source": {
+        "kind": "module",
+        "value": "privacy_tcc"
+      },
+      "current": null,
+      "desired": null,
+      "managed_by": [
+        "dotstate"
+      ],
+      "sensitivity": "restricted",
+      "confidence": "confirmed",
+      "capability": [
+        "requires_full_disk_access",
+        "manual",
+        "read_only"
+      ],
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "protected privacy surface"
+        ],
+        "requires_confirmation": true,
+        "reversible": false
+      }
+    },
+    {
+      "schema_version": "dotstate.diagnostic.v1",
+      "severity": "info",
+      "code": "macos.tcc.reference_only",
+      "message": "TCC/privacy databases are never read, copied, committed, or mutated; audit output records manual checkpoints only.",
+      "remediation": "Use System Settings or MDM for privacy permissions. dotstate will not bypass TCC.",
+      "surface": "privacy_tcc",
+      "id": "privacy_tcc:database",
+      "source": {
+        "kind": "module",
+        "value": "privacy_tcc"
+      },
+      "current": null,
+      "desired": null,
+      "managed_by": [
+        "dotstate"
+      ],
+      "sensitivity": "restricted",
+      "confidence": "confirmed",
+      "capability": [
+        "manual",
+        "read_only"
+      ],
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "restricted OS privacy database"
+        ],
+        "requires_confirmation": true,
+        "reversible": false
+      }
+    },
+    {
+      "schema_version": "dotstate.diagnostic.v1",
+      "severity": "info",
+      "code": "macos.keychain.reference_only",
+      "message": "Keychain contents are never read or serialized; store 1Password/op references or manual checkpoints instead of secret values.",
+      "remediation": "Keep decrypted values out of dotstate output. Use op:// references or secrets-env cache metadata only.",
+      "surface": "secrets",
+      "id": "secrets:keychain",
+      "source": {
+        "kind": "module",
+        "value": "secrets"
+      },
+      "current": null,
+      "desired": null,
+      "managed_by": [
+        "dotstate"
+      ],
+      "sensitivity": "restricted",
+      "confidence": "confirmed",
+      "capability": [
+        "manual",
+        "read_only"
+      ],
+      "risk": {
+        "level": "high",
+        "reasons": [
+          "decrypted Keychain values are secret material"
+        ],
+        "requires_confirmation": true,
+        "reversible": false
+      }
+    },
+    {
+      "schema_version": "dotstate.diagnostic.v1",
+      "severity": "info",
+      "code": "macos.mdm.report_only",
+      "message": "MDM-managed profiles and policy-owned settings are report-only; dotstate cannot safely change them.",
+      "remediation": "Change MDM-managed state in the management system or record it as a manual checkpoint.",
+      "surface": "profiles",
+      "id": "profiles:mdm",
+      "source": {
+        "kind": "module",
+        "value": "profiles"
+      },
+      "current": null,
+      "desired": null,
+      "managed_by": [
+        "dotstate"
+      ],
+      "sensitivity": "personal",
+      "confidence": "confirmed",
+      "capability": [
+        "requires_mdm",
+        "read_only",
+        "manual"
+      ],
+      "risk": {
+        "level": "low",
+        "reasons": [],
+        "requires_confirmation": false,
+        "reversible": true
+      }
+    },
+    {
+      "schema_version": "dotstate.diagnostic.v1",
+      "severity": "info",
+      "code": "macos.sip.protected_surface",
+      "message": "SIP-protected system surfaces are reported as unsupported/manual rather than inspected or mutated with elevated hooks.",
+      "remediation": "Do not disable SIP for dotstate. Prefer supported user-level state or explicit manual checkpoints.",
+      "surface": "macos",
+      "id": "macos:sip",
+      "source": {
+        "kind": "module",
+        "value": "macos"
+      },
+      "current": null,
+      "desired": null,
+      "managed_by": [
+        "dotstate"
+      ],
+      "sensitivity": "restricted",
+      "confidence": "confirmed",
+      "capability": [
+        "unsupported",
+        "manual",
+        "read_only"
+      ],
+      "risk": {
+        "level": "critical",
+        "reasons": [
+          "system integrity protection"
+        ],
+        "requires_confirmation": true,
+        "reversible": false
+      }
+    }
+  ],
+  "summary": {
+    "facts": 0,
+    "warnings": 1,
+    "errors": 0,
+    "redactions": 1
+  }
+}

@@ -1,0 +1,35 @@
+[
+  {
+    "schema_version": "dotstate.fact.v1",
+    "surface": "files",
+    "id": "files:path/~/.zshrc",
+    "source": {
+      "kind": "path",
+      "value": "~/.zshrc"
+    },
+    "current": {
+      "exists": true,
+      "mode": "0644",
+      "path": "~/.zshrc",
+      "type": "file"
+    },
+    "desired": null,
+    "managed_by": [
+      "dotstate",
+      "chezmoi"
+    ],
+    "sensitivity": "local_path",
+    "confidence": "confirmed",
+    "capability": [
+      "read_only",
+      "auto_apply"
+    ],
+    "risk": {
+      "level": "low",
+      "reasons": [],
+      "requires_confirmation": false,
+      "reversible": true
+    },
+    "diagnostics": []
+  }
+]

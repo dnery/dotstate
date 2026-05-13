@@ -1,0 +1,78 @@
+[
+  {
+    "schema_version": "dotstate.result.v1",
+    "run_id": "20260513T000001Z-apply-files",
+    "plan_id": "20260513T000000Z-apply",
+    "phase": "apply",
+    "surface": "files",
+    "id": "files:source/home",
+    "change_id": "files:source/home:apply",
+    "source": {
+      "kind": "chezmoi",
+      "value": "home"
+    },
+    "current": {
+      "diff_empty": true
+    },
+    "desired": {
+      "source_dir": "home"
+    },
+    "managed_by": [
+      "dotstate",
+      "chezmoi"
+    ],
+    "sensitivity": "local_path",
+    "confidence": "confirmed",
+    "capability": [
+      "auto_apply"
+    ],
+    "risk": {
+      "level": "low",
+      "reasons": [],
+      "requires_confirmation": false,
+      "reversible": true
+    },
+    "status": "noop",
+    "started_at": "2026-05-13T00:00:01Z",
+    "ended_at": "2026-05-13T00:00:01Z",
+    "diagnostics": []
+  },
+  {
+    "schema_version": "dotstate.result.v1",
+    "run_id": "20260513T000001Z-verify-files",
+    "plan_id": "20260513T000000Z-apply",
+    "phase": "verify",
+    "surface": "files",
+    "id": "files:source/home",
+    "change_id": "files:source/home:apply",
+    "source": {
+      "kind": "chezmoi",
+      "value": "home"
+    },
+    "current": {
+      "diff_empty": true
+    },
+    "desired": {
+      "source_dir": "home"
+    },
+    "managed_by": [
+      "dotstate",
+      "chezmoi"
+    ],
+    "sensitivity": "local_path",
+    "confidence": "confirmed",
+    "capability": [
+      "auto_apply"
+    ],
+    "risk": {
+      "level": "low",
+      "reasons": [],
+      "requires_confirmation": false,
+      "reversible": true
+    },
+    "status": "verified",
+    "started_at": "2026-05-13T00:00:01Z",
+    "ended_at": "2026-05-13T00:00:01Z",
+    "diagnostics": []
+  }
+]

@@ -1,0 +1,4 @@
+DOTSTATE_TEST_SECRET_DO_NOT_PRINT
+--- old
++++ new
+fixture-host.local

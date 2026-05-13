@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": "dotstate.diagnostic.v1",
+    "severity": "warning",
+    "code": "macos.permission.full_disk_access",
+    "message": "Full Disk Access is required to inspect this surface completely.",
+    "remediation": "Grant Full Disk Access to the terminal running dot, then rerun the command.",
+    "surface": "files",
+    "id": "files:path/~/Library/Mail",
+    "source": {
+      "kind": "operation",
+      "value": "stat managed path"
+    },
+    "current": {
+      "error": "Full Disk Access required"
+    },
+    "desired": null,
+    "managed_by": [
+      "dotstate",
+      "manual"
+    ],
+    "sensitivity": "restricted",
+    "confidence": "medium",
+    "capability": [
+      "requires_full_disk_access",
+      "manual",
+      "read_only"
+    ],
+    "risk": {
+      "level": "medium",
+      "reasons": [
+        "permission-controlled macOS surface"
+      ],
+      "requires_confirmation": true,
+      "reversible": false
+    }
+  }
+]

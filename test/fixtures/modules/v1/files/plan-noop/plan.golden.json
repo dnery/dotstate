@@ -1,0 +1,56 @@
+{
+  "schema_version": "dotstate.plan.v1",
+  "plan_id": "20260513T000000Z-apply",
+  "operation": "apply",
+  "created_at": "2026-05-13T00:00:00Z",
+  "target": {
+    "os": "darwin",
+    "arch": "arm64",
+    "host": "\u003credacted:hostname\u003e"
+  },
+  "summary": {
+    "create": 0,
+    "update": 0,
+    "delete": 0,
+    "noop": 1,
+    "manual": 0,
+    "blocked": 0
+  },
+  "changes": [
+    {
+      "change_id": "files:source/home:apply",
+      "surface": "files",
+      "id": "files:source/home",
+      "action": "noop",
+      "source": {
+        "kind": "chezmoi",
+        "value": "home"
+      },
+      "current": {
+        "diff_empty": true
+      },
+      "desired": {
+        "source_dir": "home"
+      },
+      "managed_by": [
+        "dotstate",
+        "chezmoi"
+      ],
+      "sensitivity": "local_path",
+      "confidence": "confirmed",
+      "capability": [
+        "auto_apply"
+      ],
+      "risk": {
+        "level": "low",
+        "reasons": [],
+        "requires_confirmation": false,
+        "reversible": true
+      },
+      "backup_required": false,
+      "depends_on": [],
+      "diagnostics": []
+    }
+  ],
+  "diagnostics": []
+}
