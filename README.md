@@ -335,10 +335,12 @@ Prerequisites:
 - Homebrew for macOS flows
 - Optional: `mas`, 1Password desktop + `op`, gitleaks, golangci-lint, goimports
 
-Build and run locally:
+Build, install, and run locally:
 
 ```sh
 make build-local
+make install-dot                 # installs to ~/.local/bin/dot
+make install-dot INSTALL_DIR=/tmp/dot-bin
 ./bin/dot doctor
 ./bin/dot macos audit --json
 ./bin/dot discover --report

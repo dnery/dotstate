@@ -2,7 +2,7 @@
 # Run `make help` for available targets
 
 .DEFAULT_GOAL := help
-.PHONY: help all build build-local run test test-v test-cover test-e2e test-e2e-fast test-e2e-deep \
+.PHONY: help all build build-local install install-dot install-secrets-env run test test-v test-cover test-e2e test-e2e-fast test-e2e-deep \
         test-e2e-capture test-e2e-verify test-e2e-record docs-check \
         lint fmt vet check secrets deps clean install-tools doctor
 
@@ -19,6 +19,7 @@ BIN_DIR     := bin
 COVER_DIR   := coverage
 CMD_DIR     := ./cmd/dot
 SECRETS_CMD_DIR := ./cmd/secrets-env
+INSTALL_DIR ?= $(HOME)/.local/bin
 
 # Go settings
 GO          := go
@@ -54,8 +55,17 @@ build-local: ## Build for current platform
 	CGO_ENABLED=$(CGO_ENABLED) $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/dot $(CMD_DIR)
 	CGO_ENABLED=$(CGO_ENABLED) $(GO) build $(GOFLAGS) -o $(BIN_DIR)/secrets-env $(SECRETS_CMD_DIR)
 
-install-secrets-env: ## Install secrets-env to ~/.local/bin
-	CGO_ENABLED=$(CGO_ENABLED) $(GO) build $(GOFLAGS) -o $(HOME)/.local/bin/secrets-env $(SECRETS_CMD_DIR)
+install: install-dot ## Install dot to INSTALL_DIR (default: ~/.local/bin)
+
+install-dot: ## Install dot to INSTALL_DIR (default: ~/.local/bin)
+	@mkdir -p "$(INSTALL_DIR)"
+	CGO_ENABLED=$(CGO_ENABLED) $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o "$(INSTALL_DIR)/dot" $(CMD_DIR)
+	@echo "$(GREEN)Installed dot to $(INSTALL_DIR)/dot$(RESET)"
+
+install-secrets-env: ## Install secrets-env to INSTALL_DIR (default: ~/.local/bin)
+	@mkdir -p "$(INSTALL_DIR)"
+	CGO_ENABLED=$(CGO_ENABLED) $(GO) build $(GOFLAGS) -o "$(INSTALL_DIR)/secrets-env" $(SECRETS_CMD_DIR)
+	@echo "$(GREEN)Installed secrets-env to $(INSTALL_DIR)/secrets-env$(RESET)"
 
 build: ## Build for all platforms (linux, darwin, windows)
 	@mkdir -p $(BIN_DIR)/{linux,darwin,windows}
