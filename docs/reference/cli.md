@@ -8,6 +8,11 @@ This file is the canonical command contract.
 - `--repo-dir <path>`: override repo directory.
 - `--verbose`, `-v`: verbose output.
 
+If `--config` is omitted, `dot` checks `DOTSTATE_CONFIG`, then searches upward
+from the current directory for `dot.toml`, then falls back to
+`DOTSTATE_REPO_PATH/dot.toml`. Set `DOTSTATE_CONFIG` or `DOTSTATE_REPO_PATH` to
+run `dot` from outside the repo.
+
 ## Commands
 
 ### `dot version`

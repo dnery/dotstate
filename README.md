@@ -110,6 +110,14 @@ dot sync --dry-run
 dot macos audit --json
 ```
 
+To run `dot` from anywhere after bootstrap, set one of these in your shell:
+
+```sh
+export DOTSTATE_CONFIG="$HOME/Projects/dotstate/dot.toml"
+# or
+export DOTSTATE_REPO_PATH="$HOME/Projects/dotstate"
+```
+
 `dot macos audit --json` may report missing optional tools such as `mas` or
 privacy/MDM limitations. Those are diagnostics, not necessarily failures.
 

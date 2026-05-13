@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -101,6 +102,59 @@ func TestRunReportOutputRedactsSentinelValues(t *testing.T) {
 	if !strings.Contains(out, "<redacted:secret>") || !strings.Contains(out, "Apply plan") {
 		t.Fatalf("run report output missing redaction marker or title:\n%s", out)
 	}
+}
+
+func TestLoadConfigSilentUsesEnvConfig(t *testing.T) {
+	repoRoot := t.TempDir()
+	cfgPath := writeCLITestConfig(t, repoRoot, filepath.Join(repoRoot, "repo"))
+	t.Chdir(t.TempDir())
+	t.Setenv(config.EnvConfigPath, cfgPath)
+	t.Setenv(config.EnvRepoPath, "")
+
+	a := &app{}
+	cfg, gotRepoRoot, err := a.loadConfigSilent()
+	if err != nil {
+		t.Fatalf("loadConfigSilent() error = %v", err)
+	}
+	if cfg.ConfigPath() != cfgPath {
+		t.Errorf("ConfigPath() = %v, want %v", cfg.ConfigPath(), cfgPath)
+	}
+	if gotRepoRoot != repoRoot {
+		t.Errorf("repo root = %v, want %v", gotRepoRoot, repoRoot)
+	}
+}
+
+func TestLoadConfigSilentFallsBackToRepoPathEnv(t *testing.T) {
+	repoRoot := t.TempDir()
+	cfgPath := writeCLITestConfig(t, repoRoot, filepath.Join(repoRoot, "repo"))
+	t.Chdir(t.TempDir())
+	t.Setenv(config.EnvConfigPath, "")
+	t.Setenv(config.EnvRepoPath, repoRoot)
+
+	a := &app{}
+	cfg, gotRepoRoot, err := a.loadConfigSilent()
+	if err != nil {
+		t.Fatalf("loadConfigSilent() error = %v", err)
+	}
+	if cfg.ConfigPath() != cfgPath {
+		t.Errorf("ConfigPath() = %v, want %v", cfg.ConfigPath(), cfgPath)
+	}
+	if gotRepoRoot != repoRoot {
+		t.Errorf("repo root = %v, want %v", gotRepoRoot, repoRoot)
+	}
+	if cfg.Repo.Path != repoRoot {
+		t.Errorf("Repo.Path = %v, want %v from %s override", cfg.Repo.Path, repoRoot, config.EnvRepoPath)
+	}
+}
+
+func writeCLITestConfig(t *testing.T, repoRoot, repoPath string) string {
+	t.Helper()
+	cfgPath := filepath.Join(repoRoot, config.ConfigFileName)
+	contents := "[repo]\npath = " + strconv.Quote(repoPath) + "\n"
+	if err := os.WriteFile(cfgPath, []byte(contents), 0o644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+	return cfgPath
 }
 
 func captureStdout(t *testing.T, fn func()) string {

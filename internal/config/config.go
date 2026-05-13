@@ -61,15 +61,16 @@ type WSLConfig struct {
 
 // Default values.
 const (
-	DefaultBranch          = "main"
-	DefaultSyncInterval    = 30
-	DefaultSourceDir       = "home"
-	DefaultEnableIdle      = true
-	DefaultEnableShutdown  = true
+	DefaultBranch         = "main"
+	DefaultSyncInterval   = 30
+	DefaultSourceDir      = "home"
+	DefaultEnableIdle     = true
+	DefaultEnableShutdown = true
 )
 
 // Environment variable names.
 const (
+	EnvConfigPath = "DOTSTATE_CONFIG"
 	EnvRepoURL    = "DOTSTATE_REPO_URL"
 	EnvRepoPath   = "DOTSTATE_REPO_PATH"
 	EnvRepoBranch = "DOTSTATE_REPO_BRANCH"
@@ -262,6 +263,57 @@ func FindRepoConfig(startDir string) (string, error) {
 		}
 		dir = parent
 	}
+}
+
+// ResolveConfigPath resolves the active dot.toml path.
+//
+// Resolution order is explicit --config path, DOTSTATE_CONFIG, upward search
+// from startDir, then DOTSTATE_REPO_PATH/dot.toml as a run-from-anywhere
+// fallback.
+func ResolveConfigPath(explicitPath, startDir string) (string, error) {
+	if explicitPath != "" {
+		return ExpandPath(explicitPath)
+	}
+
+	if envPath := os.Getenv(EnvConfigPath); envPath != "" {
+		return ExpandPath(envPath)
+	}
+
+	if startDir == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "", err
+		}
+		startDir = cwd
+	}
+
+	found, err := FindRepoConfig(startDir)
+	if err == nil {
+		return found, nil
+	}
+	findErr := err
+
+	repoPath := os.Getenv(EnvRepoPath)
+	if repoPath == "" {
+		return "", findErr
+	}
+
+	expandedRepoPath, err := ExpandPath(repoPath)
+	if err != nil {
+		return "", fmt.Errorf("expand %s: %w", EnvRepoPath, err)
+	}
+	candidate := filepath.Join(expandedRepoPath, ConfigFileName)
+	info, err := os.Stat(candidate)
+	if err == nil {
+		if info.IsDir() {
+			return "", fmt.Errorf("%s points to %s, but %s is a directory", EnvRepoPath, expandedRepoPath, candidate)
+		}
+		return candidate, nil
+	}
+	if os.IsNotExist(err) {
+		return "", fmt.Errorf("%w; %s is set but %s was not found", findErr, EnvRepoPath, candidate)
+	}
+	return "", fmt.Errorf("stat config from %s: %w", EnvRepoPath, err)
 }
 
 // NotFoundError indicates that the config file was not found.

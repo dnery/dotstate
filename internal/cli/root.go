@@ -126,17 +126,18 @@ func cmdVersion() *cobra.Command {
 
 // loadConfigSilent loads config without logging errors.
 func (a *app) loadConfigSilent() (*config.Config, string, error) {
-	cfgPath := a.cfgPath
-	if cfgPath == "" {
+	startDir := ""
+	if a.cfgPath == "" {
 		cwd, err := os.Getwd()
 		if err != nil {
 			return nil, "", err
 		}
-		found, err := config.FindRepoConfig(cwd)
-		if err != nil {
-			return nil, "", err
-		}
-		cfgPath = found
+		startDir = cwd
+	}
+
+	cfgPath, err := config.ResolveConfigPath(a.cfgPath, startDir)
+	if err != nil {
+		return nil, "", err
 	}
 
 	cfg, err := config.Load(cfgPath)

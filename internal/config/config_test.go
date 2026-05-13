@@ -95,11 +95,11 @@ func TestFindRepoConfig(t *testing.T) {
 	}
 
 	tests := []struct {
-		name      string
-		startDir  string
-		want      string
-		wantErr   bool
-		errType   error
+		name     string
+		startDir string
+		want     string
+		wantErr  bool
+		errType  error
 	}{
 		{
 			name:     "find from same dir",
@@ -149,6 +149,86 @@ func TestFindRepoConfigNotFound(t *testing.T) {
 	var notFound *NotFoundError
 	if !As(err, &notFound) {
 		t.Errorf("FindRepoConfig() error type = %T, want *NotFoundError", err)
+	}
+}
+
+func TestResolveConfigPathExplicitPathWins(t *testing.T) {
+	explicitPath := writeMinimalConfig(t, t.TempDir())
+	envPath := writeMinimalConfig(t, t.TempDir())
+	t.Setenv(EnvConfigPath, envPath)
+	t.Setenv(EnvRepoPath, "")
+
+	got, err := ResolveConfigPath(explicitPath, t.TempDir())
+	if err != nil {
+		t.Fatalf("ResolveConfigPath() error = %v", err)
+	}
+	if got != explicitPath {
+		t.Errorf("ResolveConfigPath() = %v, want explicit path %v", got, explicitPath)
+	}
+}
+
+func TestResolveConfigPathUsesEnvConfig(t *testing.T) {
+	envPath := writeMinimalConfig(t, t.TempDir())
+	t.Setenv(EnvConfigPath, envPath)
+	t.Setenv(EnvRepoPath, "")
+
+	got, err := ResolveConfigPath("", t.TempDir())
+	if err != nil {
+		t.Fatalf("ResolveConfigPath() error = %v", err)
+	}
+	if got != envPath {
+		t.Errorf("ResolveConfigPath() = %v, want %v", got, envPath)
+	}
+}
+
+func TestResolveConfigPathFindsUpwardBeforeRepoPathEnv(t *testing.T) {
+	repoRoot := t.TempDir()
+	repoConfigPath := writeMinimalConfig(t, repoRoot)
+	nestedDir := filepath.Join(repoRoot, "a", "b")
+	if err := os.MkdirAll(nestedDir, 0o755); err != nil {
+		t.Fatalf("failed to create nested dir: %v", err)
+	}
+
+	fallbackRoot := t.TempDir()
+	writeMinimalConfig(t, fallbackRoot)
+	t.Setenv(EnvConfigPath, "")
+	t.Setenv(EnvRepoPath, fallbackRoot)
+
+	got, err := ResolveConfigPath("", nestedDir)
+	if err != nil {
+		t.Fatalf("ResolveConfigPath() error = %v", err)
+	}
+	if got != repoConfigPath {
+		t.Errorf("ResolveConfigPath() = %v, want upward config %v", got, repoConfigPath)
+	}
+}
+
+func TestResolveConfigPathFallsBackToRepoPathEnv(t *testing.T) {
+	repoRoot := t.TempDir()
+	repoConfigPath := writeMinimalConfig(t, repoRoot)
+	t.Setenv(EnvConfigPath, "")
+	t.Setenv(EnvRepoPath, repoRoot)
+
+	got, err := ResolveConfigPath("", t.TempDir())
+	if err != nil {
+		t.Fatalf("ResolveConfigPath() error = %v", err)
+	}
+	if got != repoConfigPath {
+		t.Errorf("ResolveConfigPath() = %v, want %v", got, repoConfigPath)
+	}
+}
+
+func TestResolveConfigPathRepoPathEnvMissingConfig(t *testing.T) {
+	repoRoot := t.TempDir()
+	t.Setenv(EnvConfigPath, "")
+	t.Setenv(EnvRepoPath, repoRoot)
+
+	_, err := ResolveConfigPath("", t.TempDir())
+	if err == nil {
+		t.Fatal("ResolveConfigPath() expected error, got nil")
+	}
+	if !contains(err.Error(), EnvRepoPath) || !contains(err.Error(), ConfigFileName) {
+		t.Errorf("error should mention %s and %s, got: %v", EnvRepoPath, ConfigFileName, err)
 	}
 }
 
@@ -318,6 +398,15 @@ func TestDefault(t *testing.T) {
 	if cfg.Chex.SourceDir != DefaultSourceDir {
 		t.Errorf("SourceDir = %v, want %v", cfg.Chex.SourceDir, DefaultSourceDir)
 	}
+}
+
+func writeMinimalConfig(t *testing.T, dir string) string {
+	t.Helper()
+	configPath := filepath.Join(dir, ConfigFileName)
+	if err := os.WriteFile(configPath, []byte("[repo]\npath = \"repo\"\n"), 0o644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+	return configPath
 }
 
 // As is a simple type assertion for tests
