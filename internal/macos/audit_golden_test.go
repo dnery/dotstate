@@ -2,6 +2,7 @@ package macos
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -9,11 +10,54 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/dnery/dotstate/dot/internal/testutil"
 )
 
 func TestBootstrapAuditEnvelopeGolden(t *testing.T) {
 	caseDir := macOSFixtureDir(t, "macos", "audit-empty")
 	audit := NewBootstrapAudit("darwin", "arm64", "fixture-host.local", time.Date(2026, 5, 13, 0, 0, 0, 0, time.UTC))
+
+	compareMacOSGoldenJSON(t, filepath.Join(caseDir, "audit.golden.json"), audit)
+	assertMacOSFixtureSentinelsAbsent(t, caseDir)
+}
+
+func TestReadOnlyMacOSAuditGolden(t *testing.T) {
+	caseDir := macOSFixtureDir(t, "macos", "audit-readonly")
+	repoDir := testutil.TempDir(t)
+	homeDir := testutil.TempDir(t)
+	brewfile := testutil.TempFile(t, repoDir, "state/macos/brew/Brewfile", "tap \"homebrew/cask\"\nbrew \"git\"\n")
+	appInfo := testutil.TempFile(t, homeDir, "Applications/Test App.app/Contents/Info.plist", "{}")
+	agentPlist := testutil.TempFile(t, homeDir, "Library/LaunchAgents/com.example.agent.plist", "{}")
+
+	r := testutil.NewMockRunner(t)
+	r.OnCommandSuccess(testutil.MatchExact("brew", "tap"), "homebrew/cask\n")
+	r.OnCommandSuccess(testutil.MatchExact("brew", "list", "--formula", "--versions"), "git 2.51.0\n")
+	r.OnCommandSuccess(testutil.MatchExact("brew", "list", "--cask", "--versions"), "visual-studio-code 1.99.0\n")
+	r.OnCommandSuccess(testutil.MatchExact("brew", "bundle", "check", "--file", brewfile), "The Brewfile's dependencies are satisfied.\n")
+	r.OnCommandSuccess(testutil.MatchExact("mas", "list"), "497799835 Xcode (15.4)\n")
+	r.OnCommandSuccess(testutil.MatchExact("plutil", "-convert", "json", "-o", "-", appInfo), `{"CFBundleIdentifier":"com.example.TestApp","CFBundleDisplayName":"Test App","CFBundleShortVersionString":"1.2.3"}`)
+	r.OnCommandSuccess(testutil.MatchExact("plutil", "-convert", "json", "-o", "-", agentPlist), `{"Label":"com.example.agent"}`)
+	r.OnCommandSuccess(testutil.MatchExact("launchctl", "print", "gui/501/com.example.agent"), "service state = running\n")
+	r.OnCommandSuccess(testutil.MatchExact("brew", "services", "list", "--json"), `[{"name":"postgresql@16","status":"started","user":"fixture-user","file":"`+homeDir+`/Library/LaunchAgents/homebrew.mxcl.postgresql@16.plist"}]`)
+	r.OnCommandSuccess(testutil.MatchExact("defaults", "read", "NSGlobalDomain", "AppleShowAllExtensions"), "1\n")
+	r.OnCommandSuccess(testutil.MatchExact("defaults", "read", "com.apple.finder", "AppleShowAllFiles"), "0\n")
+	r.OnCommandSuccess(testutil.MatchExact("defaults", "read", "com.apple.dock", "autohide"), "1\n")
+	r.OnCommandSuccess(testutil.MatchExact("profiles", "status", "-type", "enrollment"), "Enrolled via DEP: No\nMDM enrollment: Yes\n")
+
+	audit := NewAudit(context.Background(), AuditOptions{
+		GOOS:           "darwin",
+		Arch:           "arm64",
+		Host:           "fixture-host.local",
+		GeneratedAt:    time.Date(2026, 5, 13, 0, 0, 0, 0, time.UTC),
+		Runner:         r,
+		RepoRoot:       repoDir,
+		HomeDir:        homeDir,
+		UID:            "501",
+		BrewfilePath:   brewfile,
+		AppDirs:        []string{filepath.Join(homeDir, "Applications")},
+		LaunchAgentDir: filepath.Join(homeDir, "Library", "LaunchAgents"),
+	})
 
 	compareMacOSGoldenJSON(t, filepath.Join(caseDir, "audit.golden.json"), audit)
 	assertMacOSFixtureSentinelsAbsent(t, caseDir)

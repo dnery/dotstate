@@ -61,7 +61,7 @@ Emits a non-mutating macOS audit envelope.
 Flags:
 - `--json`: required; emits `dotstate.audit.v1` JSON.
 
-The current bootstrap bridge redacts hostnames, reports pending macOS surfaces as capability diagnostics, and includes explicit Full Disk Access/TCC/SIP/MDM/Keychain guardrails. Full brew/MAS/apps/defaults collectors remain planned under the macOS audit goal.
+The command redacts hostnames and emits normalized facts for files, Homebrew taps/formulae/casks plus Brewfile presence, `mas` app inventory when available, installed `.app` bundles, user LaunchAgents, Homebrew services, curated `defaults` reads, profile/MDM posture, privacy/TCC manual checkpoints, subrepo manifest presence, and Keychain/secret reference-only policy. Missing tools, unsigned-in accounts, unreadable plists, absent defaults, and privacy restrictions are diagnostics rather than hard failures.
 
 ### `dot schedule`
 

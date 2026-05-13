@@ -1,6 +1,6 @@
 # macOS state surfaces
 
-Status: planned implementation contract for macOS Tahoe on Apple Silicon first.
+Status: read-only audit implementation exists for the first macOS surfaces; mutating capture/apply remains planned.
 
 This spec maps macOS state into first-party `dotstate` modules. It depends on the common [module and state contract](modules.md) and must not introduce separate schema, capability, redaction, or UX semantics.
 
@@ -19,11 +19,11 @@ This spec maps macOS state into first-party `dotstate` modules. It depends on th
 - `subrepos`: nested git repositories tracked by reference.
 - `secrets`: secret references and generated-file checkpoints; never secret values.
 
-The first implementation target is read-only `dot macos audit --json`. Mutating behavior must be introduced later through the plan/backup/apply/verify lifecycle in [modules.md](modules.md).
+The first implementation target, read-only `dot macos audit --json`, now emits facts for the initial surfaces while preserving diagnostics for missing tools and permissions. Mutating behavior must be introduced later through the plan/backup/apply/verify lifecycle in [modules.md](modules.md).
 
 ## macOS audit envelope
 
-`dot macos audit --json` must emit `dotstate.audit.v1` with `dotstate.fact.v1` facts and `dotstate.diagnostic.v1` diagnostics. The command should exit successfully without elevated permissions when it can safely report partial state. Missing tools, locked accounts, privacy restrictions, and MDM ownership are diagnostics.
+`dot macos audit --json` emits `dotstate.audit.v1` with `dotstate.fact.v1` facts and `dotstate.diagnostic.v1` diagnostics. The command exits successfully without elevated permissions when it can safely report partial state. Missing tools, locked accounts, privacy restrictions, unreadable app plists, absent curated defaults, and MDM ownership are diagnostics.
 
 Initial surface order:
 

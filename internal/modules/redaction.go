@@ -20,6 +20,14 @@ func SanitizeRunReport(report *RunReport) {
 	sanitizeDiagnostics(report.Diagnostics)
 }
 
+// SanitizeFacts redacts facts in place and promotes sensitivity on each record
+// when nested values were tainted.
+func SanitizeFacts(facts []Fact) {
+	for i := range facts {
+		sanitizeFact(&facts[i])
+	}
+}
+
 // SanitizePlan redacts a plan in place and promotes sensitivity on each record
 // when nested values were tainted.
 func SanitizePlan(plan *Plan) {
@@ -36,6 +44,18 @@ func SanitizePlan(plan *Plan) {
 		sanitizeChange(&plan.Changes[i])
 	}
 	sanitizeDiagnostics(plan.Diagnostics)
+}
+
+func sanitizeFact(fact *Fact) {
+	report := redact.Report{Sensitivity: redact.SensitivityPublic}
+	fact.ID, report = mergeString(report, fact.ID)
+	fact.Source, report = sanitizeSource(report, fact.Source)
+	fact.Current, report = sanitizeMap(report, fact.Current)
+	fact.Desired, report = sanitizeMap(report, fact.Desired)
+	fact.ManagedBy, report = sanitizeStringSlice(report, fact.ManagedBy)
+	fact.Risk, report = sanitizeRisk(report, fact.Risk)
+	sanitizeDiagnostics(fact.Diagnostics)
+	fact.Sensitivity = promoteSensitivity(fact.Sensitivity, report)
 }
 
 func sanitizeChange(change *Change) {
@@ -77,6 +97,12 @@ func sanitizeBackup(backup *Backup) {
 	backup.Risk, report = sanitizeRisk(report, backup.Risk)
 	backup.PayloadRef, report = sanitizePayloadRef(report, backup.PayloadRef)
 	backup.Sensitivity = promoteSensitivity(backup.Sensitivity, report)
+}
+
+// SanitizeDiagnostics redacts diagnostics in place and promotes sensitivity on
+// records whose nested values were tainted.
+func SanitizeDiagnostics(diagnostics []Diagnostic) {
+	sanitizeDiagnostics(diagnostics)
 }
 
 func sanitizeDiagnostics(diagnostics []Diagnostic) {

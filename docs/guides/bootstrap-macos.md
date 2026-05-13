@@ -100,7 +100,7 @@ dot sync --dry-run
 dot macos audit --json
 ```
 
-`dot macos audit --json` currently emits the stable audit envelope and capability diagnostics used by bootstrap. Full macOS surface collectors are planned in the read-only audit goal.
+`dot macos audit --json` emits the stable audit envelope plus read-only facts for files, Homebrew, `mas`, installed apps, LaunchAgents/services, curated defaults, profile/MDM posture, privacy/TCC checkpoints, subrepo manifest presence, and Keychain/secret reference-only policy. Missing tools or permissions appear as diagnostics so bootstrap can continue without elevation.
 
 ---
 

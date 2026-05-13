@@ -609,7 +609,23 @@ func cmdMacOS(a *app) *cobra.Command {
 				return doterrors.NewUserError("dot macos audit currently requires --json")
 			}
 			host, _ := os.Hostname()
-			envelope := macos.NewBootstrapAudit(runtime.GOOS, runtime.GOARCH, host, time.Now())
+			r := runner.New()
+			opts := macos.AuditOptions{
+				GOOS:        runtime.GOOS,
+				Arch:        runtime.GOARCH,
+				Host:        host,
+				GeneratedAt: time.Now(),
+				Runner:      r,
+				HomeDir:     a.plat.Home,
+			}
+			if cfg, _, err := a.loadConfigSilent(); err == nil {
+				opts.RepoRoot = cfg.RepoRoot()
+				opts.BrewfilePath = filepath.Join(cfg.StatePath(), "macos", "brew", "Brewfile")
+				opts.ExtraModules = []modules.Module{
+					modules.NewFilesModule(cfg, chez.New(cfg.Tools.Chezmoi, r), a.plat.Home),
+				}
+			}
+			envelope := macos.NewAudit(cmd.Context(), opts)
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
 			return enc.Encode(envelope)

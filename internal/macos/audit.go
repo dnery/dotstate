@@ -26,27 +26,11 @@ type AuditSummary struct {
 	Redactions int `json:"redactions"`
 }
 
-var bootstrapSurfaces = []string{"brew", "mas", "apps", "launchd", "defaults", "profiles", "privacy_tcc", "secrets"}
-
-// NewBootstrapAudit returns a non-mutating audit envelope that bootstrap can
-// rely on today. It intentionally reports unsupported or pending surfaces as
-// diagnostics so the command is safe to run on clean machines before the full
-// Goal 1 macOS collectors exist.
+// NewBootstrapAudit returns the minimal non-mutating audit envelope that
+// bootstrap can rely on without running local inventory commands. The CLI uses
+// NewAudit for full read-only facts.
 func NewBootstrapAudit(goos, arch, host string, generatedAt time.Time) AuditEnvelope {
-	envelope := AuditEnvelope{
-		SchemaVersion: modules.SchemaAuditV1,
-		GeneratedAt:   modules.Timestamp(generatedAt),
-		Target: modules.Target{
-			OS:   goos,
-			Arch: arch,
-			Host: redactHostname(host),
-		},
-		Facts:       []modules.Fact{},
-		Diagnostics: []modules.Diagnostic{},
-		Summary: AuditSummary{
-			Redactions: 1,
-		},
-	}
+	envelope := newAuditEnvelope(goos, arch, host, generatedAt)
 
 	if goos != "darwin" {
 		diag := modules.NewDiagnostic(
@@ -63,18 +47,6 @@ func NewBootstrapAudit(goos, arch, host string, generatedAt time.Time) AuditEnve
 		return envelope
 	}
 
-	for _, surface := range bootstrapSurfaces {
-		diag := modules.NewDiagnostic(
-			modules.SeverityInfo,
-			"macos_audit_surface_pending",
-			"Read-only macOS audit collection for this surface is pending; bootstrap can continue without elevated permissions.",
-			surface,
-			surface+":audit",
-		)
-		diag.Capability = []modules.Capability{modules.CapabilityReadOnly, modules.CapabilityDryRunOnly}
-		diag.Remediation = "Use dot doctor, dot apply --dry-run, and dot sync --dry-run for current bootstrap validation; future audit modules will add facts here."
-		envelope.Diagnostics = append(envelope.Diagnostics, diag)
-	}
 	envelope.Diagnostics = append(envelope.Diagnostics, privacySafetyDiagnostics()...)
 	envelope.updateSummary()
 	return envelope

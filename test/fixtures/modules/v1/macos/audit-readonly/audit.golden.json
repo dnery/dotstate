@@ -1,0 +1,827 @@
+{
+  "schema_version": "dotstate.audit.v1",
+  "generated_at": "2026-05-13T00:00:00Z",
+  "target": {
+    "os": "darwin",
+    "arch": "arm64",
+    "host": "\u003credacted:hostname\u003e"
+  },
+  "facts": [
+    {
+      "schema_version": "dotstate.fact.v1",
+      "surface": "brew",
+      "id": "brew:brewfile",
+      "source": {
+        "kind": "command",
+        "value": "brew bundle check --file state/macos/brew/Brewfile",
+        "observed_at": "2026-05-13T00:00:00Z"
+      },
+      "current": {
+        "exists": true,
+        "path": "state/macos/brew/Brewfile",
+        "satisfied": true
+      },
+      "desired": null,
+      "managed_by": [
+        "dotstate",
+        "homebrew"
+      ],
+      "sensitivity": "local_path",
+      "confidence": "confirmed",
+      "capability": [
+        "read_only"
+      ],
+      "risk": {
+        "level": "low",
+        "reasons": [],
+        "requires_confirmation": false,
+        "reversible": true
+      },
+      "diagnostics": null
+    },
+    {
+      "schema_version": "dotstate.fact.v1",
+      "surface": "brew",
+      "id": "brew:cask/visual-studio-code",
+      "source": {
+        "kind": "command",
+        "value": "brew list --cask --versions",
+        "observed_at": "2026-05-13T00:00:00Z"
+      },
+      "current": {
+        "installed": true,
+        "kind": "cask",
+        "name": "visual-studio-code",
+        "versions": [
+          "1.99.0"
+        ]
+      },
+      "desired": null,
+      "managed_by": [
+        "homebrew"
+      ],
+      "sensitivity": "public",
+      "confidence": "confirmed",
+      "capability": [
+        "read_only"
+      ],
+      "risk": {
+        "level": "low",
+        "reasons": [],
+        "requires_confirmation": false,
+        "reversible": true
+      },
+      "diagnostics": null
+    },
+    {
+      "schema_version": "dotstate.fact.v1",
+      "surface": "brew",
+      "id": "brew:formula/git",
+      "source": {
+        "kind": "command",
+        "value": "brew list --formula --versions",
+        "observed_at": "2026-05-13T00:00:00Z"
+      },
+      "current": {
+        "installed": true,
+        "kind": "formula",
+        "name": "git",
+        "versions": [
+          "2.51.0"
+        ]
+      },
+      "desired": null,
+      "managed_by": [
+        "homebrew"
+      ],
+      "sensitivity": "public",
+      "confidence": "confirmed",
+      "capability": [
+        "read_only"
+      ],
+      "risk": {
+        "level": "low",
+        "reasons": [],
+        "requires_confirmation": false,
+        "reversible": true
+      },
+      "diagnostics": null
+    },
+    {
+      "schema_version": "dotstate.fact.v1",
+      "surface": "brew",
+      "id": "brew:tap/homebrew/cask",
+      "source": {
+        "kind": "command",
+        "value": "brew tap",
+        "observed_at": "2026-05-13T00:00:00Z"
+      },
+      "current": {
+        "installed": true,
+        "name": "homebrew/cask"
+      },
+      "desired": null,
+      "managed_by": [
+        "homebrew"
+      ],
+      "sensitivity": "public",
+      "confidence": "confirmed",
+      "capability": [
+        "read_only"
+      ],
+      "risk": {
+        "level": "low",
+        "reasons": [],
+        "requires_confirmation": false,
+        "reversible": true
+      },
+      "diagnostics": null
+    },
+    {
+      "schema_version": "dotstate.fact.v1",
+      "surface": "mas",
+      "id": "mas:app/497799835",
+      "source": {
+        "kind": "command",
+        "value": "mas list",
+        "observed_at": "2026-05-13T00:00:00Z"
+      },
+      "current": {
+        "id": "497799835",
+        "installed": true,
+        "name": "Xcode",
+        "version": "15.4"
+      },
+      "desired": null,
+      "managed_by": [
+        "mas"
+      ],
+      "sensitivity": "personal",
+      "confidence": "confirmed",
+      "capability": [
+        "read_only"
+      ],
+      "risk": {
+        "level": "low",
+        "reasons": [],
+        "requires_confirmation": false,
+        "reversible": true
+      },
+      "diagnostics": null
+    },
+    {
+      "schema_version": "dotstate.fact.v1",
+      "surface": "apps",
+      "id": "apps:bundle/com.example.TestApp",
+      "source": {
+        "kind": "path",
+        "value": "~/Applications/Test App.app",
+        "observed_at": "2026-05-13T00:00:00Z"
+      },
+      "current": {
+        "bundle_id": "com.example.TestApp",
+        "installed": true,
+        "name": "Test App",
+        "path": "~/Applications/Test App.app",
+        "source_hint": "user_applications",
+        "version": "1.2.3"
+      },
+      "desired": null,
+      "managed_by": [
+        "macos",
+        "manual"
+      ],
+      "sensitivity": "personal",
+      "confidence": "high",
+      "capability": [
+        "read_only",
+        "manual"
+      ],
+      "risk": {
+        "level": "low",
+        "reasons": [],
+        "requires_confirmation": false,
+        "reversible": true
+      },
+      "diagnostics": null
+    },
+    {
+      "schema_version": "dotstate.fact.v1",
+      "surface": "launchd",
+      "id": "launchd:brew/postgresql@16",
+      "source": {
+        "kind": "command",
+        "value": "brew services list --json",
+        "observed_at": "2026-05-13T00:00:00Z"
+      },
+      "current": {
+        "file": "~/Library/LaunchAgents/homebrew.mxcl.postgresql@16.plist",
+        "managed_by_brew": true,
+        "name": "postgresql@16",
+        "status": "started",
+        "user": "fixture-user"
+      },
+      "desired": null,
+      "managed_by": [
+        "homebrew",
+        "launchd"
+      ],
+      "sensitivity": "personal",
+      "confidence": "confirmed",
+      "capability": [
+        "read_only",
+        "dry_run_only"
+      ],
+      "risk": {
+        "level": "low",
+        "reasons": [],
+        "requires_confirmation": false,
+        "reversible": true
+      },
+      "diagnostics": null
+    },
+    {
+      "schema_version": "dotstate.fact.v1",
+      "surface": "launchd",
+      "id": "launchd:user/com.example.agent",
+      "source": {
+        "kind": "path",
+        "value": "~/Library/LaunchAgents/com.example.agent.plist",
+        "observed_at": "2026-05-13T00:00:00Z"
+      },
+      "current": {
+        "installed": true,
+        "label": "com.example.agent",
+        "loaded": true,
+        "path": "~/Library/LaunchAgents/com.example.agent.plist",
+        "state_summary": "service state = running"
+      },
+      "desired": null,
+      "managed_by": [
+        "launchd"
+      ],
+      "sensitivity": "local_path",
+      "confidence": "high",
+      "capability": [
+        "read_only",
+        "dry_run_only"
+      ],
+      "risk": {
+        "level": "low",
+        "reasons": [],
+        "requires_confirmation": false,
+        "reversible": true
+      },
+      "diagnostics": null
+    },
+    {
+      "schema_version": "dotstate.fact.v1",
+      "surface": "defaults",
+      "id": "defaults:domain/NSGlobalDomain/key/AppleShowAllExtensions",
+      "source": {
+        "kind": "command",
+        "value": "defaults read NSGlobalDomain AppleShowAllExtensions",
+        "observed_at": "2026-05-13T00:00:00Z"
+      },
+      "current": {
+        "available": true,
+        "curated": true,
+        "domain": "NSGlobalDomain",
+        "key": "AppleShowAllExtensions",
+        "value": "1"
+      },
+      "desired": null,
+      "managed_by": [
+        "macos",
+        "manual"
+      ],
+      "sensitivity": "personal",
+      "confidence": "high",
+      "capability": [
+        "read_only",
+        "dry_run_only"
+      ],
+      "risk": {
+        "level": "low",
+        "reasons": [],
+        "requires_confirmation": false,
+        "reversible": true
+      },
+      "diagnostics": null
+    },
+    {
+      "schema_version": "dotstate.fact.v1",
+      "surface": "defaults",
+      "id": "defaults:domain/com.apple.dock/key/autohide",
+      "source": {
+        "kind": "command",
+        "value": "defaults read com.apple.dock autohide",
+        "observed_at": "2026-05-13T00:00:00Z"
+      },
+      "current": {
+        "available": true,
+        "curated": true,
+        "domain": "com.apple.dock",
+        "key": "autohide",
+        "value": "1"
+      },
+      "desired": null,
+      "managed_by": [
+        "macos",
+        "manual"
+      ],
+      "sensitivity": "personal",
+      "confidence": "high",
+      "capability": [
+        "read_only",
+        "dry_run_only"
+      ],
+      "risk": {
+        "level": "low",
+        "reasons": [],
+        "requires_confirmation": false,
+        "reversible": true
+      },
+      "diagnostics": null
+    },
+    {
+      "schema_version": "dotstate.fact.v1",
+      "surface": "defaults",
+      "id": "defaults:domain/com.apple.finder/key/AppleShowAllFiles",
+      "source": {
+        "kind": "command",
+        "value": "defaults read com.apple.finder AppleShowAllFiles",
+        "observed_at": "2026-05-13T00:00:00Z"
+      },
+      "current": {
+        "available": true,
+        "curated": true,
+        "domain": "com.apple.finder",
+        "key": "AppleShowAllFiles",
+        "value": "0"
+      },
+      "desired": null,
+      "managed_by": [
+        "macos",
+        "manual"
+      ],
+      "sensitivity": "personal",
+      "confidence": "high",
+      "capability": [
+        "read_only",
+        "dry_run_only"
+      ],
+      "risk": {
+        "level": "low",
+        "reasons": [],
+        "requires_confirmation": false,
+        "reversible": true
+      },
+      "diagnostics": null
+    },
+    {
+      "schema_version": "dotstate.fact.v1",
+      "surface": "profiles",
+      "id": "profiles:mdm/enrollment",
+      "source": {
+        "kind": "command",
+        "value": "profiles status -type enrollment",
+        "observed_at": "2026-05-13T00:00:00Z"
+      },
+      "current": {
+        "enrolled_via_dep": false,
+        "mdm_enrollment": true,
+        "report_only": true
+      },
+      "desired": null,
+      "managed_by": [
+        "macos",
+        "mdm"
+      ],
+      "sensitivity": "personal",
+      "confidence": "medium",
+      "capability": [
+        "read_only",
+        "requires_mdm",
+        "manual"
+      ],
+      "risk": {
+        "level": "low",
+        "reasons": [],
+        "requires_confirmation": false,
+        "reversible": false
+      },
+      "diagnostics": null
+    },
+    {
+      "schema_version": "dotstate.fact.v1",
+      "surface": "privacy_tcc",
+      "id": "privacy_tcc:service/Accessibility/client/manual",
+      "source": {
+        "kind": "manual",
+        "value": "macOS privacy settings",
+        "observed_at": "2026-05-13T00:00:00Z"
+      },
+      "current": {
+        "database_read": false,
+        "service": "Accessibility",
+        "status": "manual_checkpoint"
+      },
+      "desired": null,
+      "managed_by": [
+        "manual",
+        "macos"
+      ],
+      "sensitivity": "restricted",
+      "confidence": "medium",
+      "capability": [
+        "read_only",
+        "manual"
+      ],
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "protected privacy surface"
+        ],
+        "requires_confirmation": true,
+        "reversible": false
+      },
+      "diagnostics": null
+    },
+    {
+      "schema_version": "dotstate.fact.v1",
+      "surface": "privacy_tcc",
+      "id": "privacy_tcc:service/Automation/client/manual",
+      "source": {
+        "kind": "manual",
+        "value": "macOS privacy settings",
+        "observed_at": "2026-05-13T00:00:00Z"
+      },
+      "current": {
+        "database_read": false,
+        "service": "Automation",
+        "status": "manual_checkpoint"
+      },
+      "desired": null,
+      "managed_by": [
+        "manual",
+        "macos"
+      ],
+      "sensitivity": "restricted",
+      "confidence": "medium",
+      "capability": [
+        "read_only",
+        "manual"
+      ],
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "protected privacy surface"
+        ],
+        "requires_confirmation": true,
+        "reversible": false
+      },
+      "diagnostics": null
+    },
+    {
+      "schema_version": "dotstate.fact.v1",
+      "surface": "privacy_tcc",
+      "id": "privacy_tcc:service/DeveloperTools/client/manual",
+      "source": {
+        "kind": "manual",
+        "value": "macOS privacy settings",
+        "observed_at": "2026-05-13T00:00:00Z"
+      },
+      "current": {
+        "database_read": false,
+        "service": "DeveloperTools",
+        "status": "manual_checkpoint"
+      },
+      "desired": null,
+      "managed_by": [
+        "manual",
+        "macos"
+      ],
+      "sensitivity": "restricted",
+      "confidence": "medium",
+      "capability": [
+        "read_only",
+        "manual"
+      ],
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "protected privacy surface"
+        ],
+        "requires_confirmation": true,
+        "reversible": false
+      },
+      "diagnostics": null
+    },
+    {
+      "schema_version": "dotstate.fact.v1",
+      "surface": "privacy_tcc",
+      "id": "privacy_tcc:service/FullDiskAccess/client/manual",
+      "source": {
+        "kind": "manual",
+        "value": "macOS privacy settings",
+        "observed_at": "2026-05-13T00:00:00Z"
+      },
+      "current": {
+        "database_read": false,
+        "service": "FullDiskAccess",
+        "status": "manual_checkpoint"
+      },
+      "desired": null,
+      "managed_by": [
+        "manual",
+        "macos"
+      ],
+      "sensitivity": "restricted",
+      "confidence": "medium",
+      "capability": [
+        "read_only",
+        "manual"
+      ],
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "protected privacy surface"
+        ],
+        "requires_confirmation": true,
+        "reversible": false
+      },
+      "diagnostics": null
+    },
+    {
+      "schema_version": "dotstate.fact.v1",
+      "surface": "privacy_tcc",
+      "id": "privacy_tcc:service/ScreenRecording/client/manual",
+      "source": {
+        "kind": "manual",
+        "value": "macOS privacy settings",
+        "observed_at": "2026-05-13T00:00:00Z"
+      },
+      "current": {
+        "database_read": false,
+        "service": "ScreenRecording",
+        "status": "manual_checkpoint"
+      },
+      "desired": null,
+      "managed_by": [
+        "manual",
+        "macos"
+      ],
+      "sensitivity": "restricted",
+      "confidence": "medium",
+      "capability": [
+        "read_only",
+        "manual"
+      ],
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "protected privacy surface"
+        ],
+        "requires_confirmation": true,
+        "reversible": false
+      },
+      "diagnostics": null
+    },
+    {
+      "schema_version": "dotstate.fact.v1",
+      "surface": "subrepos",
+      "id": "subrepos:manifest",
+      "source": {
+        "kind": "path",
+        "value": "state/subrepos.toml",
+        "observed_at": "2026-05-13T00:00:00Z"
+      },
+      "current": {
+        "exists": false,
+        "path": "state/subrepos.toml"
+      },
+      "desired": null,
+      "managed_by": [
+        "dotstate",
+        "git"
+      ],
+      "sensitivity": "local_path",
+      "confidence": "medium",
+      "capability": [
+        "read_only"
+      ],
+      "risk": {
+        "level": "low",
+        "reasons": [],
+        "requires_confirmation": false,
+        "reversible": true
+      },
+      "diagnostics": null
+    },
+    {
+      "schema_version": "dotstate.fact.v1",
+      "surface": "secrets",
+      "id": "secrets:keychain/reference-only",
+      "source": {
+        "kind": "policy",
+        "value": "dotstate secret safety policy",
+        "observed_at": "2026-05-13T00:00:00Z"
+      },
+      "current": {
+        "keychain_contents_read": false,
+        "recommended_reference_scheme": "op://",
+        "secret_values_serialized": false
+      },
+      "desired": null,
+      "managed_by": [
+        "dotstate",
+        "manual"
+      ],
+      "sensitivity": "restricted",
+      "confidence": "confirmed",
+      "capability": [
+        "read_only",
+        "manual"
+      ],
+      "risk": {
+        "level": "high",
+        "reasons": [
+          "decrypted Keychain values are secret material"
+        ],
+        "requires_confirmation": true,
+        "reversible": false
+      },
+      "diagnostics": null
+    }
+  ],
+  "diagnostics": [
+    {
+      "schema_version": "dotstate.diagnostic.v1",
+      "severity": "info",
+      "code": "macos.mdm.report_only",
+      "message": "MDM-managed profiles and policy-owned settings are report-only; dotstate cannot safely change them.",
+      "remediation": "Change MDM-managed state in the management system or record it as a manual checkpoint.",
+      "surface": "profiles",
+      "id": "profiles:mdm",
+      "source": {
+        "kind": "module",
+        "value": "profiles"
+      },
+      "current": null,
+      "desired": null,
+      "managed_by": [
+        "dotstate"
+      ],
+      "sensitivity": "personal",
+      "confidence": "confirmed",
+      "capability": [
+        "requires_mdm",
+        "read_only",
+        "manual"
+      ],
+      "risk": {
+        "level": "low",
+        "reasons": [],
+        "requires_confirmation": false,
+        "reversible": true
+      }
+    },
+    {
+      "schema_version": "dotstate.diagnostic.v1",
+      "severity": "warning",
+      "code": "macos.full_disk_access.manual_checkpoint",
+      "message": "Some macOS state can be hidden by privacy controls; dotstate reports the gap instead of requesting Full Disk Access automatically.",
+      "remediation": "Grant Full Disk Access to the terminal running dot only if you want complete inspection, then rerun dot macos audit --json.",
+      "surface": "privacy_tcc",
+      "id": "privacy_tcc:full_disk_access",
+      "source": {
+        "kind": "module",
+        "value": "privacy_tcc"
+      },
+      "current": null,
+      "desired": null,
+      "managed_by": [
+        "dotstate"
+      ],
+      "sensitivity": "restricted",
+      "confidence": "confirmed",
+      "capability": [
+        "requires_full_disk_access",
+        "manual",
+        "read_only"
+      ],
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "protected privacy surface"
+        ],
+        "requires_confirmation": true,
+        "reversible": false
+      }
+    },
+    {
+      "schema_version": "dotstate.diagnostic.v1",
+      "severity": "info",
+      "code": "macos.tcc.reference_only",
+      "message": "TCC/privacy databases are never read, copied, committed, or mutated; audit output records manual checkpoints only.",
+      "remediation": "Use System Settings or MDM for privacy permissions. dotstate will not bypass TCC.",
+      "surface": "privacy_tcc",
+      "id": "privacy_tcc:database",
+      "source": {
+        "kind": "module",
+        "value": "privacy_tcc"
+      },
+      "current": null,
+      "desired": null,
+      "managed_by": [
+        "dotstate"
+      ],
+      "sensitivity": "restricted",
+      "confidence": "confirmed",
+      "capability": [
+        "manual",
+        "read_only"
+      ],
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "restricted OS privacy database"
+        ],
+        "requires_confirmation": true,
+        "reversible": false
+      }
+    },
+    {
+      "schema_version": "dotstate.diagnostic.v1",
+      "severity": "info",
+      "code": "macos.keychain.reference_only",
+      "message": "Keychain contents are never read or serialized; store 1Password/op references or manual checkpoints instead of secret values.",
+      "remediation": "Keep decrypted values out of dotstate output. Use op:// references or secrets-env cache metadata only.",
+      "surface": "secrets",
+      "id": "secrets:keychain",
+      "source": {
+        "kind": "module",
+        "value": "secrets"
+      },
+      "current": null,
+      "desired": null,
+      "managed_by": [
+        "dotstate"
+      ],
+      "sensitivity": "restricted",
+      "confidence": "confirmed",
+      "capability": [
+        "manual",
+        "read_only"
+      ],
+      "risk": {
+        "level": "high",
+        "reasons": [
+          "decrypted Keychain values are secret material"
+        ],
+        "requires_confirmation": true,
+        "reversible": false
+      }
+    },
+    {
+      "schema_version": "dotstate.diagnostic.v1",
+      "severity": "info",
+      "code": "macos.sip.protected_surface",
+      "message": "SIP-protected system surfaces are reported as unsupported/manual rather than inspected or mutated with elevated hooks.",
+      "remediation": "Do not disable SIP for dotstate. Prefer supported user-level state or explicit manual checkpoints.",
+      "surface": "macos",
+      "id": "macos:sip",
+      "source": {
+        "kind": "module",
+        "value": "macos"
+      },
+      "current": null,
+      "desired": null,
+      "managed_by": [
+        "dotstate"
+      ],
+      "sensitivity": "restricted",
+      "confidence": "confirmed",
+      "capability": [
+        "unsupported",
+        "manual",
+        "read_only"
+      ],
+      "risk": {
+        "level": "critical",
+        "reasons": [
+          "system integrity protection"
+        ],
+        "requires_confirmation": true,
+        "reversible": false
+      }
+    }
+  ],
+  "summary": {
+    "facts": 19,
+    "warnings": 1,
+    "errors": 0,
+    "redactions": 1
+  }
+}
