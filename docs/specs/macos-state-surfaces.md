@@ -215,6 +215,8 @@ The order is for deterministic output only. It does not imply apply order.
 
 **Purpose:** report privacy permission posture and manual checkpoints for services such as Accessibility, Full Disk Access, Screen Recording, Automation, and Developer Tools.
 
+Implementation note: the bootstrap-safe audit bridge now emits explicit Full Disk Access/TCC/SIP/MDM diagnostics so permission friction is visible before full collectors exist.
+
 - Current state sources:
   - Safe, public OS status APIs where available.
   - Manual checkpoint manifests.
@@ -259,6 +261,8 @@ The order is for deterministic output only. It does not imply apply order.
 ### `secrets`
 
 **Purpose:** model secret references, generated private files, and secret tooling posture without storing secret material.
+
+Implementation note: the audit bridge includes a `macos.keychain.reference_only` diagnostic; Keychain contents remain metadata/manual-checkpoint only.
 
 - Current state sources:
   - `state/secrets/refs.toml` when present.

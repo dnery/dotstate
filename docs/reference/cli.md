@@ -61,7 +61,7 @@ Emits a non-mutating macOS audit envelope.
 Flags:
 - `--json`: required; emits `dotstate.audit.v1` JSON.
 
-The current bootstrap bridge redacts hostnames and reports pending macOS surfaces as capability diagnostics. Full brew/MAS/apps/defaults collectors remain planned under the macOS audit goal.
+The current bootstrap bridge redacts hostnames, reports pending macOS surfaces as capability diagnostics, and includes explicit Full Disk Access/TCC/SIP/MDM/Keychain guardrails. Full brew/MAS/apps/defaults collectors remain planned under the macOS audit goal.
 
 ### `dot schedule`
 
@@ -89,7 +89,7 @@ Flags:
 - `--dry-run`
 - `--no-commit`
 - `--deep`
-- `--report`
+- `--report`: prints a redacted report and a `secrets.gitleaks.unavailable` diagnostic when the external scanner is not installed.
 - `--secrets <error|warning|ignore>`
 
 ## Exit Codes

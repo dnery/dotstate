@@ -296,6 +296,8 @@ The envelope is successful when unsupported or unavailable surfaces are represen
 
 ## Redaction rules
 
+Implementation status: module plans/run reports now pass through the shared `internal/redact` sanitizer before return; CLI rendering, structured logs, runner errors, discover reports, schedule plans, bootstrap output, and audit JSON have sentinel redaction tests.
+
 1. Redaction happens before any record is logged, rendered, serialized, tested, or returned from a module boundary.
 2. Strings matching known secret patterns are replaced with `<redacted:secret>` and taint the record as `secret` unless the record stores only a reference.
 3. Credentialed URLs must preserve scheme/host/path while replacing credentials, for example `https://<redacted:credential>@github.com/user/repo.git`.

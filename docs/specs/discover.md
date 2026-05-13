@@ -290,10 +290,11 @@ The `internal/discover/secrets.go` package includes 30+ regex patterns:
 
 ### Detection flow
 
-1. **Pre-scan**: Before classification, files are scanned for secret patterns
-2. **Classification impact**: Files with findings are marked as **Risky**
-3. **Warnings displayed**: Secret findings shown in report and prompts
-4. **Final guardrail**: `chezmoi add --secrets=error` catches remaining secrets
+1. **Pre-scan**: Before classification, files are scanned for secret patterns.
+2. **Classification impact**: Files with findings are marked as **Risky**.
+3. **Warnings displayed**: Secret findings shown in report and prompts with matched values replaced by redaction markers.
+4. **External scanner status**: `dot discover --report` emits a structured `secrets.gitleaks.unavailable` diagnostic when the external `gitleaks` binary is not available. When `ScanWithGitleaks` is called by tests or future flows, JSON gitleaks findings are parsed and redacted instead of falling back to a placeholder.
+5. **Final guardrail**: `chezmoi add --secrets=error` catches remaining secrets.
 
 ---
 
@@ -380,9 +381,11 @@ When user confirms selection:
 
 ### Secret detector (`internal/discover/secrets.go`)
 
-- Compiles regex patterns once
-- Scans file content for matches
-- Returns findings with pattern name and line context
+- Compiles regex patterns once.
+- Scans file content for matches.
+- Returns findings with pattern name and line context, never raw matched values.
+- Parses gitleaks JSON output when the external scanner is invoked.
+- Emits an unavailable diagnostic in report mode when gitleaks is not installed, while still using the built-in scanner and Chezmoi add guardrail.
 
 ### Sub-repo detector (`internal/discover/subrepo.go`)
 
@@ -416,7 +419,8 @@ When user confirms selection:
 
 ### Safety
 - [x] Files containing secret patterns are classified as Risky
-- [x] Secret warnings are displayed in report
+- [x] Secret warnings are displayed in reports with values redacted
+- [x] `dot discover --report` reports gitleaks availability without failing discovery
 - [x] `chezmoi add --secrets=error` rejects actual secrets
 
 ### Sub-repos
