@@ -26,6 +26,9 @@ func SanitizePlan(plan *Plan) {
 	if plan == nil {
 		return
 	}
+	report := redact.Report{Sensitivity: redact.SensitivityPublic}
+	plan.PlanID, report = mergeString(report, plan.PlanID)
+	plan.CreatedAt, _ = mergeString(report, plan.CreatedAt)
 	if plan.Target.Host != "" && plan.Target.Host != "<redacted:hostname>" {
 		plan.Target.Host = "<redacted:hostname>"
 	}

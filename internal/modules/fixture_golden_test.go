@@ -75,6 +75,45 @@ func TestFilesFixturePlanCreateOrUpdateGolden(t *testing.T) {
 	assertFixtureSentinelsAbsent(t, caseDir)
 }
 
+func TestFilesFixtureRedactionGolden(t *testing.T) {
+	caseDir := moduleFixtureDir(t, "files", "redaction")
+	const sentinel = "DOTSTATE_TEST_SECRET_DO_NOT_PRINT"
+	plan := &Plan{
+		SchemaVersion: SchemaPlanV1,
+		PlanID:        "plan-" + sentinel,
+		Operation:     OperationApply,
+		CreatedAt:     Timestamp(fixtureTime),
+		Target:        Target{OS: "darwin", Arch: "arm64", Host: "fixture-host.local"},
+		Summary:       PlanSummary{Update: 1},
+		Changes: []Change{
+			{
+				ChangeID:    "files:path/~/.env:update:" + sentinel,
+				Surface:     "files",
+				ID:          "files:path/~/.env",
+				Action:      ActionUpdate,
+				Source:      Source{Kind: "manifest", Value: "https://user:" + sentinel + "@github.com/dnery/dotstate.git"},
+				Current:     map[string]any{"line": "API_TOKEN=" + sentinel},
+				Desired:     map[string]any{"reference": "op://Employee/local/API_TOKEN"},
+				ManagedBy:   []string{"dotstate", "chezmoi"},
+				Sensitivity: SensitivityLocalPath,
+				Confidence:  ConfidenceHigh,
+				Capability:  []Capability{CapabilityAutoApply},
+				Risk:        Risk{Level: RiskMedium, Reasons: []string{"contains " + sentinel}, Reversible: true},
+			},
+		},
+	}
+	SanitizePlan(plan)
+	if plan.Changes[0].Sensitivity != SensitivitySecret {
+		t.Fatalf("sanitized change sensitivity = %q, want secret", plan.Changes[0].Sensitivity)
+	}
+	if got := plan.Changes[0].Desired["reference"]; got != "op://Employee/local/API_TOKEN" {
+		t.Fatalf("op reference changed during redaction: %#v", got)
+	}
+
+	compareGoldenJSON(t, filepath.Join(caseDir, "plan.golden.json"), plan)
+	assertFixtureSentinelsAbsent(t, caseDir)
+}
+
 func TestFilesFixtureResultRecordsGolden(t *testing.T) {
 	caseDir := moduleFixtureDir(t, "files", "result-records")
 	orch := fixtureFilesOrchestrator(t, "")
