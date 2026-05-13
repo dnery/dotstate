@@ -101,6 +101,13 @@ func (m *Manager) Install(ctx context.Context, opts InstallOptions) (*Status, er
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("create LaunchAgents directory: %w", err)
 	}
+	owned, err := isDotstateLaunchAgent(path)
+	if err != nil {
+		return nil, err
+	}
+	if !owned {
+		return nil, fmt.Errorf("refusing to overwrite non-dotstate LaunchAgent at %s", path)
+	}
 	if opts.LogDir != "" {
 		if err := os.MkdirAll(opts.LogDir, 0o755); err != nil {
 			return nil, fmt.Errorf("create schedule log directory: %w", err)
@@ -183,6 +190,13 @@ func (m *Manager) Remove(ctx context.Context) (*Status, error) {
 		return nil, err
 	}
 	path := LaunchAgentPath(m.Home)
+	owned, err := isDotstateLaunchAgent(path)
+	if err != nil {
+		return nil, err
+	}
+	if !owned {
+		return nil, fmt.Errorf("refusing to remove non-dotstate LaunchAgent at %s", path)
+	}
 	if m.Runner != nil {
 		_, _ = m.Runner.Run(ctx, "", "launchctl", "bootout", m.launchctlDomain(), path)
 	}
@@ -252,6 +266,17 @@ func validateInstallOptions(opts InstallOptions) error {
 		return fmt.Errorf("missing schedule install option(s): %s", strings.Join(missing, ", "))
 	}
 	return nil
+}
+
+func isDotstateLaunchAgent(path string) (bool, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return true, nil
+		}
+		return false, fmt.Errorf("read existing LaunchAgent: %w", err)
+	}
+	return bytes.Contains(content, []byte(Label)), nil
 }
 
 func (m *Manager) requireDarwin() error {

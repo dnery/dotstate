@@ -91,7 +91,13 @@ func TestInspectReportsMissingWithoutLaunchctl(t *testing.T) {
 
 func TestRemoveDeletesLaunchAgentBestEffort(t *testing.T) {
 	home := testutil.TempDir(t)
-	testutil.TempFile(t, filepath.Dir(LaunchAgentPath(home)), filepath.Base(LaunchAgentPath(home)), "plist")
+	testutil.TempFile(t, filepath.Dir(LaunchAgentPath(home)), filepath.Base(LaunchAgentPath(home)), RenderLaunchAgent(InstallOptions{
+		DotBin:          "/bin/dot",
+		ConfigPath:      filepath.Join(home, "repo", "dot.toml"),
+		RepoRoot:        filepath.Join(home, "repo"),
+		LogDir:          filepath.Join(home, "repo", "state", "logs"),
+		IntervalMinutes: 30,
+	}))
 	r := testutil.NewMockRunner(t)
 	r.OnCommandSuccess(testutil.MatchExact("launchctl", "bootout", "gui/501", LaunchAgentPath(home)), "")
 	m := &Manager{Home: home, OS: "darwin", UID: "501", Runner: r}
@@ -104,6 +110,36 @@ func TestRemoveDeletesLaunchAgentBestEffort(t *testing.T) {
 		t.Fatalf("status = %#v, want removed", status)
 	}
 	testutil.AssertFileNotExists(t, LaunchAgentPath(home))
+}
+
+func TestInstallRefusesNonDotstateLaunchAgent(t *testing.T) {
+	home := testutil.TempDir(t)
+	testutil.TempFile(t, filepath.Dir(LaunchAgentPath(home)), filepath.Base(LaunchAgentPath(home)), "<plist><dict><key>Label</key><string>com.example.other</string></dict></plist>")
+	m := &Manager{Home: home, OS: "darwin", UID: "501", Runner: testutil.NewMockRunner(t)}
+
+	_, err := m.Install(context.Background(), InstallOptions{
+		DotBin:          "/bin/dot",
+		ConfigPath:      filepath.Join(home, "repo", "dot.toml"),
+		RepoRoot:        filepath.Join(home, "repo"),
+		LogDir:          filepath.Join(home, "repo", "state", "logs"),
+		IntervalMinutes: 30,
+		NoLoad:          true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "refusing to overwrite non-dotstate LaunchAgent") {
+		t.Fatalf("Install error = %v, want non-dotstate refusal", err)
+	}
+}
+
+func TestRemoveRefusesNonDotstateLaunchAgent(t *testing.T) {
+	home := testutil.TempDir(t)
+	testutil.TempFile(t, filepath.Dir(LaunchAgentPath(home)), filepath.Base(LaunchAgentPath(home)), "<plist><dict><key>Label</key><string>com.example.other</string></dict></plist>")
+	m := &Manager{Home: home, OS: "darwin", UID: "501", Runner: testutil.NewMockRunner(t)}
+
+	_, err := m.Remove(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "refusing to remove non-dotstate LaunchAgent") {
+		t.Fatalf("Remove error = %v, want non-dotstate refusal", err)
+	}
+	testutil.AssertFileExists(t, LaunchAgentPath(home))
 }
 
 func TestOptionsFromConfigUsesConfiguredInterval(t *testing.T) {
