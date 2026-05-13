@@ -3,7 +3,7 @@
 
 .DEFAULT_GOAL := help
 .PHONY: help all build build-local run test test-v test-cover test-e2e test-e2e-fast test-e2e-deep \
-        test-e2e-capture test-e2e-record docs-check \
+        test-e2e-capture test-e2e-verify test-e2e-record docs-check \
         lint fmt vet check secrets deps clean install-tools doctor
 
 # Build info (injected at compile time)
@@ -93,6 +93,9 @@ test-e2e-deep: build-local ## Run discover harness deep scenario
 
 test-e2e-capture: build-local ## Run discover harness capture-loop scenario
 	./test/e2e/discover_harness.sh --dot-bin ./bin/dot --scenario capture-loop
+
+test-e2e-verify: build-local ## Run macOS verification harness scenario
+	./test/e2e/discover_harness.sh --dot-bin ./bin/dot --scenario macos-verification
 
 test-e2e-record: build-local ## Run discover harness with asciinema recording (opt-in upload)
 	./test/e2e/discover_harness.sh --dot-bin ./bin/dot --scenario all --record

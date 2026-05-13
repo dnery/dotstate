@@ -24,6 +24,7 @@ Raw logs are kept under `local-raw/` and are excluded from review bundle by defa
 - `discover-deep`
 - `discover-interactive`
 - `capture-loop`
+- `macos-verification` — sandbox-home apply/capture/idempotency, LaunchAgent install/status/remove on macOS, bootstrap dry-run, and sentinel leak verification.
 - `all`
 
 ## Common Commands
@@ -34,6 +35,9 @@ make test-e2e
 
 # specific scenario
 ./test/e2e/discover_harness.sh --dot-bin ./bin/dot --scenario discover-fast
+
+# macOS verification bundle
+make test-e2e-verify
 
 # strict mode
 ./test/e2e/discover_harness.sh --dot-bin ./bin/dot --scenario all --strict

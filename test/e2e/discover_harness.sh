@@ -9,7 +9,7 @@ Usage:
 Options:
   --dot-bin PATH       Path to dot binary (default: ./bin/dot)
   --out-dir PATH       Output directory (default: state/e2e-runs/<timestamp>)
-  --scenario NAME      discover-fast | discover-deep | discover-interactive | capture-loop | all (default: all)
+  --scenario NAME      discover-fast | discover-deep | discover-interactive | capture-loop | macos-verification | all (default: all)
   --record             Record run with asciinema (session.cast)
   --upload             Upload cast after recording (opt-in only)
   --strict             Exit non-zero if any check fails
@@ -75,7 +75,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$SCENARIO" in
-    discover-fast|discover-deep|discover-interactive|capture-loop|all) ;;
+    discover-fast|discover-deep|discover-interactive|capture-loop|macos-verification|all) ;;
     *)
         echo "Invalid --scenario: $SCENARIO" >&2
         exit 2
@@ -84,6 +84,9 @@ esac
 
 timestamp_compact() { date -u +"%Y%m%dT%H%M%SZ"; }
 timestamp_human() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
+
+HARNESS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SENTINEL="DOTSTATE_TEST_SECRET_DO_NOT_PRINT"
 
 if [[ -z "$OUT_DIR" ]]; then
     OUT_DIR="state/e2e-runs/$(timestamp_compact)"
@@ -138,6 +141,7 @@ sleep_if_enabled() {
 
 redact_stream() {
     sed -E \
+        -e 's/DOTSTATE_TEST_SECRET_DO_NOT_PRINT/[REDACTED_SENTINEL]/g' \
         -e 's/gh[pors]_[A-Za-z0-9_]+/[REDACTED_GITHUB_TOKEN]/g' \
         -e 's/glpat-[A-Za-z0-9_-]+/[REDACTED_GITLAB_TOKEN]/g' \
         -e 's/AKIA[0-9A-Z]{16}/[REDACTED_AWS_ACCESS_KEY]/g' \
@@ -196,6 +200,10 @@ BASHRC
 cat > "$FAKE_HOME/.config/app/settings.json" <<'SETTINGS'
 {"theme":"dark","fontSize":14}
 SETTINGS
+
+cat > "$FAKE_HOME/.config/app/secret.env" <<'SECRETENV'
+API_TOKEN=DOTSTATE_TEST_SECRET_DO_NOT_PRINT
+SECRETENV
 
 cat > "$FAKE_HOME/.ssh/id_rsa" <<'SSHKEY'
 -----BEGIN OPENSSH PRIVATE KEY-----
@@ -410,6 +418,118 @@ run_capture_loop() {
     fi
 }
 
+run_macos_verification() {
+    cat > "$FAKE_HOME/.harness_apply" <<'OLDSTATE'
+old managed content
+OLDSTATE
+    cat > "$REPO_DIR/home/dot_harness_apply" <<'NEWSTATE'
+new managed content
+NEWSTATE
+    git -C "$REPO_DIR" add home/dot_harness_apply
+    git -C "$REPO_DIR" commit -m "harness: add desired managed file" >/dev/null
+
+    if run_cmd "apply_dry_run_diff" "$run_env_prefix --config \"$REPO_DIR/dot.toml\" --repo-dir \"$REPO_DIR\" apply --dry-run"; then
+        if rg -q "update=1|backup-required" "$CMD_DIR/apply_dry_run_diff.txt"; then
+            record_check "apply dry-run reports diff and backup" "PASS" "apply plan showed update and backup requirement" ""
+        else
+            record_check "apply dry-run reports diff and backup" "FAIL" "apply plan missed update or backup requirement" ""
+        fi
+    else
+        record_check "apply dry-run reports diff and backup" "FAIL" "apply dry-run command failed" ""
+    fi
+
+    if run_cmd "apply_update" "$run_env_prefix --config \"$REPO_DIR/dot.toml\" --repo-dir \"$REPO_DIR\" apply"; then
+        if [[ "$(cat "$FAKE_HOME/.harness_apply")" == "new managed content" ]]; then
+            record_check "apply updates sandbox home" "PASS" "managed file matched desired content" ""
+        else
+            record_check "apply updates sandbox home" "FAIL" "managed file did not match desired content" ""
+        fi
+    else
+        record_check "apply updates sandbox home" "FAIL" "apply command failed" ""
+    fi
+
+    if find "$REPO_DIR/state/backups" -type f -name ".harness_apply" -print -quit | rg -q ".harness_apply"; then
+        record_check "apply creates restorable backup payload" "PASS" "backup payload for managed file exists" ""
+    else
+        record_check "apply creates restorable backup payload" "FAIL" "backup payload missing" ""
+    fi
+
+    if run_cmd "apply_idempotent_dry_run" "$run_env_prefix --config \"$REPO_DIR/dot.toml\" --repo-dir \"$REPO_DIR\" apply --dry-run"; then
+        if rg -q "noop=1|No change" "$CMD_DIR/apply_idempotent_dry_run.txt"; then
+            record_check "apply twice is no-op" "PASS" "second apply plan was no-op" ""
+        else
+            record_check "apply twice is no-op" "FAIL" "second apply plan was not no-op" ""
+        fi
+    else
+        record_check "apply twice is no-op" "FAIL" "second apply dry-run failed" ""
+    fi
+
+    cat > "$FAKE_HOME/.harness_apply" <<'CAPTUREDSTATE'
+captured managed content
+CAPTUREDSTATE
+
+    if run_cmd "capture_dry_run" "$run_env_prefix --config \"$REPO_DIR/dot.toml\" --repo-dir \"$REPO_DIR\" capture --dry-run"; then
+        record_check "capture dry-run exits cleanly" "PASS" "capture plan rendered without mutation" ""
+    else
+        record_check "capture dry-run exits cleanly" "FAIL" "capture dry-run command failed" ""
+    fi
+
+    if run_cmd "capture_update" "$run_env_prefix --config \"$REPO_DIR/dot.toml\" --repo-dir \"$REPO_DIR\" capture"; then
+        if rg -q "captured managed content" "$REPO_DIR/home/dot_harness_apply"; then
+            record_check "capture updates desired artifact" "PASS" "source artifact reflects sandbox-home edit" ""
+        else
+            record_check "capture updates desired artifact" "FAIL" "source artifact did not reflect sandbox-home edit" ""
+        fi
+    else
+        record_check "capture updates desired artifact" "FAIL" "capture command failed" ""
+    fi
+
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+        if run_cmd "schedule_install_dry_run" "$run_env_prefix --config \"$REPO_DIR/dot.toml\" --repo-dir \"$REPO_DIR\" schedule install --dry-run --dot-bin \"$DOT_BIN_ABS\" --interval 5"; then
+            record_check "schedule install dry-run exits cleanly" "PASS" "LaunchAgent plan rendered without writing" ""
+        else
+            record_check "schedule install dry-run exits cleanly" "FAIL" "schedule install dry-run failed" ""
+        fi
+
+        if run_cmd "schedule_install_no_load" "$run_env_prefix --config \"$REPO_DIR/dot.toml\" --repo-dir \"$REPO_DIR\" schedule install --no-load --dot-bin \"$DOT_BIN_ABS\" --interval 5"; then
+            record_check "schedule install sandbox no-load exits cleanly" "PASS" "LaunchAgent written in sandbox home" ""
+        else
+            record_check "schedule install sandbox no-load exits cleanly" "FAIL" "schedule install --no-load failed" ""
+        fi
+
+        if run_cmd "schedule_status" "$run_env_prefix --config \"$REPO_DIR/dot.toml\" --repo-dir \"$REPO_DIR\" schedule status"; then
+            record_check "schedule status exits cleanly" "PASS" "status inspected sandbox LaunchAgent" ""
+        else
+            record_check "schedule status exits cleanly" "FAIL" "schedule status failed" ""
+        fi
+
+        if run_cmd "schedule_remove" "$run_env_prefix --config \"$REPO_DIR/dot.toml\" --repo-dir \"$REPO_DIR\" schedule remove"; then
+            record_check "schedule remove exits cleanly" "PASS" "sandbox LaunchAgent removed" ""
+        else
+            record_check "schedule remove exits cleanly" "FAIL" "schedule remove failed" ""
+        fi
+
+        if [[ "$(uname -m)" == "arm64" ]]; then
+            if run_cmd "bootstrap_script_dry_run" "\"$HARNESS_ROOT/scripts/bootstrap-macos.sh\" --dry-run --repo \"https://user:$SENTINEL@github.com/dnery/dotstate.git\" --install-dir \"$SANDBOX_DIR/install-$SENTINEL\""; then
+                record_check "release bootstrap script dry-run exits cleanly" "PASS" "bootstrap script rendered validation steps" ""
+            else
+                record_check "release bootstrap script dry-run exits cleanly" "FAIL" "bootstrap script dry-run failed" ""
+            fi
+        else
+            record_check "release bootstrap script dry-run exits cleanly" "PASS" "skipped on non-arm64 macOS runner" ""
+        fi
+    else
+        record_check "schedule install/status/remove macOS checks" "PASS" "skipped on non-macOS runner" ""
+        record_check "release bootstrap script dry-run exits cleanly" "PASS" "skipped on non-macOS runner" ""
+    fi
+
+    if "$HARNESS_ROOT/test/e2e/verify_artifacts_no_sentinel.sh" "$OUT_DIR" "$SENTINEL" > "$CMD_DIR/sentinel_verifier.txt" 2>&1; then
+        record_check "generated artifacts contain no sentinel leaks" "PASS" "sentinel verifier passed" ""
+    else
+        record_check "generated artifacts contain no sentinel leaks" "FAIL" "sentinel verifier failed" ""
+    fi
+}
+
 case "$SCENARIO" in
     discover-fast)
         run_discover_fast
@@ -423,6 +543,9 @@ case "$SCENARIO" in
     capture-loop)
         run_capture_loop
         ;;
+    macos-verification)
+        run_macos_verification
+        ;;
     all)
         run_discover_fast
         sleep_if_enabled
@@ -431,6 +554,8 @@ case "$SCENARIO" in
         run_discover_interactive
         sleep_if_enabled
         run_capture_loop
+        sleep_if_enabled
+        run_macos_verification
         ;;
 esac
 
