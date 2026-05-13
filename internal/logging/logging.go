@@ -26,6 +26,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dnery/dotstate/dot/internal/redact"
 )
 
 // Level represents a log level.
@@ -107,7 +109,7 @@ func New(cfg Config) (*Logger, error) {
 		jsonHandler := slog.NewJSONHandler(f, &slog.HandlerOptions{
 			Level: cfg.LogLevel,
 		})
-		handlers = append(handlers, jsonHandler)
+		handlers = append(handlers, redactingHandler{next: jsonHandler})
 	}
 
 	// Stderr handler (human-readable)
@@ -119,7 +121,7 @@ func New(cfg Config) (*Logger, error) {
 		textHandler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 			Level: stderrLevel,
 		})
-		handlers = append(handlers, textHandler)
+		handlers = append(handlers, redactingHandler{next: textHandler})
 	}
 
 	// Create a combined handler
@@ -209,6 +211,60 @@ func (l *Logger) Slog() *slog.Logger {
 // multiHandler fans out log records to multiple handlers.
 type multiHandler struct {
 	handlers []slog.Handler
+}
+
+type redactingHandler struct {
+	next slog.Handler
+}
+
+func (h redactingHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return h.next.Enabled(ctx, level)
+}
+
+func (h redactingHandler) Handle(ctx context.Context, record slog.Record) error {
+	safe := slog.NewRecord(record.Time, record.Level, redact.Text(record.Message), record.PC)
+	record.Attrs(func(attr slog.Attr) bool {
+		safe.AddAttrs(redactAttr(attr))
+		return true
+	})
+	return h.next.Handle(ctx, safe)
+}
+
+func (h redactingHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	safe := make([]slog.Attr, len(attrs))
+	for i, attr := range attrs {
+		safe[i] = redactAttr(attr)
+	}
+	return redactingHandler{next: h.next.WithAttrs(safe)}
+}
+
+func (h redactingHandler) WithGroup(name string) slog.Handler {
+	return redactingHandler{next: h.next.WithGroup(redact.Text(name))}
+}
+
+func redactAttr(attr slog.Attr) slog.Attr {
+	attr.Key = redact.Text(attr.Key)
+	attr.Value = redactValue(attr.Value.Resolve())
+	return attr
+}
+
+func redactValue(value slog.Value) slog.Value {
+	switch value.Kind() {
+	case slog.KindString:
+		return slog.StringValue(redact.Text(value.String()))
+	case slog.KindGroup:
+		attrs := value.Group()
+		safe := make([]slog.Attr, len(attrs))
+		for i, attr := range attrs {
+			safe[i] = redactAttr(attr)
+		}
+		return slog.GroupValue(safe...)
+	case slog.KindAny:
+		safe, _ := redact.Value(value.Any())
+		return slog.AnyValue(safe)
+	default:
+		return value
+	}
 }
 
 func (h *multiHandler) Enabled(ctx context.Context, level slog.Level) bool {

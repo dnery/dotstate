@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/dnery/dotstate/dot/internal/redact"
 )
 
 // CmdResult holds the result of a command execution.
@@ -110,11 +112,15 @@ type RunError struct {
 }
 
 func (e *RunError) Error() string {
-	stderr := strings.TrimSpace(e.Stderr)
-	if stderr != "" {
-		return fmt.Sprintf("%s %v failed (exit %d): %s", e.Cmd, e.Args, e.Code, stderr)
+	stderr := redact.Text(strings.TrimSpace(e.Stderr))
+	args := make([]string, len(e.Args))
+	for i, arg := range e.Args {
+		args[i] = redact.Text(arg)
 	}
-	return fmt.Sprintf("%s %v failed (exit %d): %v", e.Cmd, e.Args, e.Code, e.Err)
+	if stderr != "" {
+		return fmt.Sprintf("%s %v failed (exit %d): %s", redact.Text(e.Cmd), args, e.Code, stderr)
+	}
+	return fmt.Sprintf("%s %v failed (exit %d): %s", redact.Text(e.Cmd), args, e.Code, redact.Text(fmt.Sprint(e.Err)))
 }
 
 func (e *RunError) Unwrap() error {

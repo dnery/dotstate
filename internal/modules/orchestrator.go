@@ -109,6 +109,7 @@ func (o *Orchestrator) Plan(ctx context.Context, operation Operation) (*Plan, er
 		Changes:       []Change{},
 		Diagnostics:   []Diagnostic{},
 	}
+	defer SanitizePlan(plan)
 
 	for _, mod := range o.modules {
 		changes, diagnostics, err := mod.Plan(ctx, operation)
@@ -126,6 +127,7 @@ func (o *Orchestrator) Plan(ctx context.Context, operation Operation) (*Plan, er
 func (o *Orchestrator) Run(ctx context.Context, operation Operation, opts RunOptions) (*RunReport, error) {
 	plan, err := o.Plan(ctx, operation)
 	report := &RunReport{Plan: plan}
+	defer SanitizeRunReport(report)
 	if err != nil {
 		return report, err
 	}
@@ -193,6 +195,7 @@ func (o *Orchestrator) Run(ctx context.Context, operation Operation, opts RunOpt
 
 func (o *Orchestrator) Restore(ctx context.Context, backups []Backup) (*RunReport, error) {
 	report := &RunReport{Backups: append([]Backup(nil), backups...)}
+	defer SanitizeRunReport(report)
 	for _, mod := range o.modules {
 		selected := backupsForSurface(backups, mod.Surface())
 		if len(selected) == 0 {

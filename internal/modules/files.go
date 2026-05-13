@@ -13,6 +13,7 @@ import (
 
 	"github.com/dnery/dotstate/dot/internal/chez"
 	"github.com/dnery/dotstate/dot/internal/config"
+	"github.com/dnery/dotstate/dot/internal/redact"
 )
 
 const filesSurface = "files"
@@ -161,6 +162,12 @@ func (m *FilesModule) Backup(ctx context.Context, changes []Change, plan *Plan) 
 			return backups, diagnostics, err
 		}
 		backup.Current["sha256"] = sha
+		contentReport := inspectFileSensitivity(dest)
+		backup.Sensitivity = promoteSensitivity(backup.Sensitivity, contentReport)
+		if contentReport.Sensitivity >= redact.SensitivitySecret {
+			backup.Current["content_redacted"] = true
+			backup.Current["content_sensitivity"] = string(backup.Sensitivity)
+		}
 		backup.PayloadRef = PayloadRef{Kind: "local_file", Path: payloadPath, SHA256: sha}
 		backups = append(backups, backup)
 	}
@@ -445,6 +452,21 @@ func copyFileWithSHA(src, dst string, mode os.FileMode) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func inspectFileSensitivity(path string) redact.Report {
+	file, err := os.Open(path)
+	if err != nil {
+		return redact.Report{Sensitivity: redact.SensitivityPublic}
+	}
+	defer file.Close()
+
+	content, err := io.ReadAll(io.LimitReader(file, 10*1024*1024))
+	if err != nil {
+		return redact.Report{Sensitivity: redact.SensitivityPublic}
+	}
+	_, report := redact.String(string(content))
+	return report
 }
 
 func restoreFile(src, dst string) error {

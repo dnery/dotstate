@@ -2,6 +2,7 @@ package modules
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -190,6 +191,58 @@ func TestFilesModuleBackupCopiesManagedFiles(t *testing.T) {
 		t.Fatalf("unexpected restore results: %#v", results)
 	}
 	testutil.AssertFileContent(t, managedPath, "export PATH=/usr/bin\n")
+}
+
+func TestFilesModuleBackupTaintsSecretPayloadWithoutSerializingIt(t *testing.T) {
+	ctx := context.Background()
+	repoDir := testutil.TempDir(t)
+	homeDir := testutil.TempDir(t)
+	cfg := loadModuleTestConfig(t, repoDir)
+	const sentinel = "DOTSTATE_TEST_SECRET_DO_NOT_PRINT"
+	testutil.TempFile(t, homeDir, ".env", "API_TOKEN="+sentinel+"\n")
+
+	mock := testutil.NewMockRunner(t)
+	mock.OnCommandSuccess(
+		testutil.MatchCommandPrefix("chezmoi", "--source", filepath.Join(repoDir, "home"), "managed"),
+		".env\n",
+	)
+
+	files := NewFilesModule(cfg, chez.New("chezmoi", mock), homeDir)
+	change := files.baseChange(OperationApply)
+	change.Action = ActionUpdate
+	change.BackupRequired = true
+	plan := &Plan{SchemaVersion: SchemaPlanV1, PlanID: "test-plan", Operation: OperationApply}
+
+	backups, diagnostics, err := files.Backup(ctx, []Change{change}, plan)
+	if err != nil {
+		t.Fatalf("Backup error = %v", err)
+	}
+	if len(diagnostics) != 0 {
+		t.Fatalf("unexpected diagnostics: %#v", diagnostics)
+	}
+	if len(backups) != 1 {
+		t.Fatalf("backup count = %d, want 1", len(backups))
+	}
+	if backups[0].Sensitivity != SensitivitySecret {
+		t.Fatalf("backup sensitivity = %q, want secret", backups[0].Sensitivity)
+	}
+	if redacted, _ := backups[0].Current["content_redacted"].(bool); !redacted {
+		t.Fatalf("backup did not record redacted secret content: %#v", backups[0].Current)
+	}
+	encoded, err := json.Marshal(backups)
+	if err != nil {
+		t.Fatalf("Marshal backups: %v", err)
+	}
+	if strings.Contains(string(encoded), sentinel) {
+		t.Fatalf("backup record leaked sentinel: %s", encoded)
+	}
+	content, err := os.ReadFile(backups[0].PayloadRef.Path)
+	if err != nil {
+		t.Fatalf("read backup payload: %v", err)
+	}
+	if !strings.Contains(string(content), sentinel) {
+		t.Fatalf("backup payload should remain restorable local content")
+	}
 }
 
 func loadModuleTestConfig(t *testing.T, repoDir string) *config.Config {
