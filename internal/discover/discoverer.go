@@ -12,6 +12,7 @@ import (
 	"github.com/dnery/dotstate/dot/internal/config"
 	"github.com/dnery/dotstate/dot/internal/gitx"
 	"github.com/dnery/dotstate/dot/internal/platform"
+	"github.com/dnery/dotstate/dot/internal/redact"
 	"github.com/dnery/dotstate/dot/internal/runner"
 	toml "github.com/pelletier/go-toml/v2"
 )
@@ -176,6 +177,11 @@ func (d *Discoverer) Run(ctx context.Context, opts Options) error {
 		if err := d.secrets.UpdateCandidates(ctx, result.Candidates); err != nil {
 			return fmt.Errorf("secret scan failed: %w", err)
 		}
+		if opts.ReportOnly {
+			if diag := d.secrets.GitleaksUnavailableDiagnostic(ctx); diag != nil {
+				result.Diagnostics = append(result.Diagnostics, *diag)
+			}
+		}
 	}
 
 	// Report-only mode
@@ -205,7 +211,7 @@ func (d *Discoverer) Run(ctx context.Context, opts Options) error {
 	if opts.DryRun {
 		fmt.Printf("Would add %d files (dry run).\n", len(selected))
 		for _, c := range selected {
-			fmt.Printf("  %s\n", c.RelPath)
+			fmt.Printf("  %s\n", redact.Text(c.RelPath))
 		}
 		return nil
 	}
@@ -296,14 +302,14 @@ func (d *Discoverer) handleSubRepos(ctx context.Context, subRepos []*Candidate) 
 		}
 
 		if url == "" {
-			fmt.Printf("  SKIP: %s (local only - will be skipped)\n", r.RelPath)
+			fmt.Printf("  SKIP: %s (local only - will be skipped)\n", redact.Text(r.RelPath))
 			continue
 		}
 
 		if redacted {
-			fmt.Printf("  OK: %s -> %s (credentials redacted)\n", r.RelPath, url)
+			fmt.Printf("  OK: %s -> %s (credentials redacted)\n", redact.Text(r.RelPath), redact.Text(url))
 		} else {
-			fmt.Printf("  OK: %s -> %s\n", r.RelPath, url)
+			fmt.Printf("  OK: %s -> %s\n", redact.Text(r.RelPath), redact.Text(url))
 		}
 		discovered = append(discovered, SubRepoManifest{
 			Path:   r.RelPath,
@@ -326,10 +332,10 @@ func (d *Discoverer) handleSubRepos(ctx context.Context, subRepos []*Candidate) 
 	fmt.Printf("\nSub-repository manifest (%d repos):\n", len(manifest.SubRepos))
 	for _, m := range manifest.SubRepos {
 		fmt.Printf("  [[subrepo]]\n")
-		fmt.Printf("  path = %q\n", m.Path)
-		fmt.Printf("  url = %q\n", m.URL)
+		fmt.Printf("  path = %q\n", redact.Text(m.Path))
+		fmt.Printf("  url = %q\n", redact.Text(m.URL))
 		if m.Branch != "" {
-			fmt.Printf("  branch = %q\n", m.Branch)
+			fmt.Printf("  branch = %q\n", redact.Text(m.Branch))
 		}
 		fmt.Println()
 	}
@@ -346,7 +352,7 @@ func (d *Discoverer) handleSubRepos(ctx context.Context, subRepos []*Candidate) 
 		return fmt.Errorf("write sub-repo manifest: %w", err)
 	}
 
-	fmt.Printf("Note: Sub-repo manifest saved to %s\n", manifestPath)
+	fmt.Printf("Note: Sub-repo manifest saved to %s\n", redact.Text(manifestPath))
 	fmt.Println("      During 'dot apply', these repos will be cloned/updated.")
 
 	return nil

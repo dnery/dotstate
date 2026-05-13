@@ -2,10 +2,13 @@ package discover
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/dnery/dotstate/dot/internal/runner"
 )
 
 func TestSecretDetector_ScanFile(t *testing.T) {
@@ -187,8 +190,8 @@ func TestSecretDetector_RedactsDisplayedMatches(t *testing.T) {
 		if strings.Contains(finding.Match, token) {
 			t.Fatalf("finding leaked token in display match: %q", finding.Match)
 		}
-		if finding.Match != "<redacted>" {
-			t.Fatalf("finding.Match = %q, want <redacted>", finding.Match)
+		if finding.Match != "<redacted:secret>" {
+			t.Fatalf("finding.Match = %q, want <redacted:secret>", finding.Match)
 		}
 	}
 }
@@ -298,4 +301,90 @@ func TestSecretDetector_UpdateCandidates(t *testing.T) {
 	if len(candidates[1].SecretWarnings) != 0 {
 		t.Error("clean file should not have warnings")
 	}
+}
+
+func TestSecretDetectorScanWithGitleaksParsesRedactedJSON(t *testing.T) {
+	const sentinel = "DOTSTATE_TEST_SECRET_DO_NOT_PRINT"
+	r := &gitleaksRunner{
+		versionOK: true,
+		reportJSON: `[
+  {
+    "RuleID": "generic-api-key",
+    "File": "config.env",
+    "StartLine": 7,
+    "Secret": "` + sentinel + `",
+    "Match": "token=` + sentinel + `"
+  }
+]`,
+	}
+	d := NewSecretDetector(r)
+
+	findings, err := d.ScanWithGitleaks(context.Background(), []string{"/tmp/config.env"})
+	if err != nil {
+		t.Fatalf("ScanWithGitleaks error = %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("findings = %d, want 1", len(findings))
+	}
+	finding := findings[0]
+	if finding.PatternID != "generic-api-key" || finding.Line != 7 || finding.Confidence != "high" {
+		t.Fatalf("unexpected finding: %#v", finding)
+	}
+	if finding.Match != "<redacted:secret>" {
+		t.Fatalf("Match = %q, want redacted marker", finding.Match)
+	}
+	if strings.Contains(strings.Join([]string{finding.File, finding.Match, finding.PatternID}, " "), sentinel) {
+		t.Fatalf("finding leaked sentinel: %#v", finding)
+	}
+}
+
+func TestSecretDetectorGitleaksUnavailableDiagnostic(t *testing.T) {
+	d := NewSecretDetector(&gitleaksRunner{versionOK: false})
+	diag := d.GitleaksUnavailableDiagnostic(context.Background())
+	if diag == nil {
+		t.Fatal("expected unavailable diagnostic")
+	}
+	if diag.Code != "secrets.gitleaks.unavailable" {
+		t.Fatalf("diag code = %q", diag.Code)
+	}
+	if len(diag.Capability) == 0 {
+		t.Fatalf("expected capability labels: %#v", diag)
+	}
+	_, err := d.ScanWithGitleaks(context.Background(), []string{"/tmp/config.env"})
+	if !errors.Is(err, ErrGitleaksUnavailable) {
+		t.Fatalf("ScanWithGitleaks error = %v, want ErrGitleaksUnavailable", err)
+	}
+}
+
+type gitleaksRunner struct {
+	versionOK  bool
+	reportJSON string
+}
+
+func (r *gitleaksRunner) Run(ctx context.Context, dir, name string, args ...string) (*runner.CmdResult, error) {
+	if name != "gitleaks" {
+		return nil, errors.New("unexpected command")
+	}
+	if len(args) > 0 && args[0] == "version" {
+		if r.versionOK {
+			return &runner.CmdResult{Stdout: "gitleaks test"}, nil
+		}
+		return &runner.CmdResult{Code: -1}, &runner.RunError{Cmd: name, Args: args, Code: -1, Err: errors.New("not found")}
+	}
+	if len(args) > 0 && args[0] == "detect" {
+		reportPath := ""
+		for i := 0; i < len(args)-1; i++ {
+			if args[i] == "--report-path" {
+				reportPath = args[i+1]
+			}
+		}
+		if reportPath == "" {
+			return nil, errors.New("missing report path")
+		}
+		if err := os.WriteFile(reportPath, []byte(r.reportJSON), 0o600); err != nil {
+			return nil, err
+		}
+		return &runner.CmdResult{Code: 1}, &runner.RunError{Cmd: name, Args: args, Code: 1, Stderr: "leaks found", Err: errors.New("exit status 1")}
+	}
+	return nil, errors.New("unexpected gitleaks args")
 }

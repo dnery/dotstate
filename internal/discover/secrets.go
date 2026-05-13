@@ -3,11 +3,16 @@ package discover
 import (
 	"bufio"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 
+	"github.com/dnery/dotstate/dot/internal/modules"
+	"github.com/dnery/dotstate/dot/internal/redact"
 	"github.com/dnery/dotstate/dot/internal/runner"
 )
 
@@ -37,6 +42,8 @@ type SecretFinding struct {
 	PatternID  string
 	Confidence string // "high", "medium", "low"
 }
+
+var ErrGitleaksUnavailable = errors.New("gitleaks unavailable")
 
 // NewSecretDetector creates a new secret detector.
 func NewSecretDetector(r runner.Runner) *SecretDetector {
@@ -166,7 +173,7 @@ func (d *SecretDetector) ScanFile(ctx context.Context, path string) ([]SecretFin
 }
 
 func redactedSecretMatch(_ string) string {
-	return "<redacted>"
+	return "<redacted:secret>"
 }
 
 // ScanFiles scans multiple files for secrets.
@@ -197,23 +204,118 @@ func (d *SecretDetector) HasGitleaks(ctx context.Context) bool {
 	return err == nil
 }
 
+// GitleaksUnavailableDiagnostic reports the external scanner status without
+// failing discovery. The built-in scanner still runs, but this makes the
+// missing defense-in-depth tool visible in share-safe reports.
+func (d *SecretDetector) GitleaksUnavailableDiagnostic(ctx context.Context) *modules.Diagnostic {
+	if d.HasGitleaks(ctx) {
+		return nil
+	}
+	diag := modules.NewDiagnostic(
+		modules.SeverityWarning,
+		"secrets.gitleaks.unavailable",
+		"External gitleaks scanner is unavailable; dotstate used its built-in redacted pattern scan only.",
+		"secrets",
+		"secrets:gitleaks",
+	)
+	diag.Capability = []modules.Capability{modules.CapabilityReadOnly, modules.CapabilityUnsupported}
+	diag.Remediation = "Install gitleaks to add an external JSON scanner, or keep relying on chezmoi --secrets=error as the final add guardrail."
+	return &diag
+}
+
 // ScanWithGitleaks uses the gitleaks binary for more comprehensive scanning.
 func (d *SecretDetector) ScanWithGitleaks(ctx context.Context, paths []string) ([]SecretFinding, error) {
-	// This is a placeholder for gitleaks integration
-	// In production, we would:
-	// 1. Write paths to a temp file
-	// 2. Run gitleaks with --source pointing to the paths
-	// 3. Parse the JSON output
-	// For now, fall back to built-in scanning
 	var allFindings []SecretFinding
+	if !d.HasGitleaks(ctx) {
+		return nil, ErrGitleaksUnavailable
+	}
 	for _, path := range paths {
-		findings, err := d.ScanFile(ctx, path)
+		findings, err := d.scanPathWithGitleaks(ctx, path)
 		if err != nil {
-			return nil, fmt.Errorf("scan %s: %w", path, err)
+			return nil, fmt.Errorf("gitleaks scan %s: %w", path, err)
 		}
 		allFindings = append(allFindings, findings...)
 	}
 	return allFindings, nil
+}
+
+func (d *SecretDetector) scanPathWithGitleaks(ctx context.Context, path string) ([]SecretFinding, error) {
+	report, err := os.CreateTemp("", "dotstate-gitleaks-*.json")
+	if err != nil {
+		return nil, err
+	}
+	reportPath := report.Name()
+	if err := report.Close(); err != nil {
+		return nil, err
+	}
+	defer os.Remove(reportPath)
+
+	result, runErr := d.runner.Run(ctx, "", "gitleaks",
+		"detect",
+		"--no-git",
+		"--source", path,
+		"--report-format", "json",
+		"--report-path", reportPath,
+		"--redact",
+		"--exit-code", "1",
+	)
+	if runErr != nil && runner.ExitCode(runErr) != 1 {
+		return nil, runErr
+	}
+
+	data, err := os.ReadFile(reportPath)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(string(data)) == "" && result != nil {
+		data = []byte(result.Stdout)
+	}
+	return parseGitleaksJSON(data, path)
+}
+
+type gitleaksJSONFinding struct {
+	RuleID    string `json:"RuleID"`
+	RuleIDAlt string `json:"ruleID"`
+	File      string `json:"File"`
+	FileAlt   string `json:"file"`
+	StartLine int    `json:"StartLine"`
+	Line      int    `json:"Line"`
+}
+
+func parseGitleaksJSON(data []byte, fallbackFile string) ([]SecretFinding, error) {
+	if strings.TrimSpace(string(data)) == "" {
+		return nil, nil
+	}
+	var raw []gitleaksJSONFinding
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("parse gitleaks JSON: %w", err)
+	}
+	findings := make([]SecretFinding, 0, len(raw))
+	for _, item := range raw {
+		patternID := firstNonEmpty(item.RuleID, item.RuleIDAlt, "gitleaks")
+		file := firstNonEmpty(item.File, item.FileAlt, fallbackFile)
+		line := item.StartLine
+		if line == 0 {
+			line = item.Line
+		}
+		findings = append(findings, SecretFinding{
+			File:       redact.Text(file),
+			Line:       line,
+			Match:      redactedSecretMatch(""),
+			PatternID:  redact.Text(patternID),
+			Confidence: "high",
+		})
+	}
+	return findings, nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 // confidenceLevel returns the confidence level for a pattern.

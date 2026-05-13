@@ -8,6 +8,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/dnery/dotstate/dot/internal/redact"
 )
 
 // Prompter handles user interaction for file selection.
@@ -100,7 +102,7 @@ func (p *Prompter) SelectCandidates(ctx context.Context, result *Result) ([]*Can
 			p.printCandidate(index, c, "[ ]")
 			if len(c.SecretWarnings) > 0 {
 				for _, w := range c.SecretWarnings {
-					fmt.Fprintf(p.out, "       WARNING: %s\n", w)
+					fmt.Fprintf(p.out, "       WARNING: %s\n", redact.Text(w))
 				}
 			}
 			index++
@@ -199,10 +201,10 @@ func (p *Prompter) printCandidate(index int, c *Candidate, prefix string) {
 
 	reasons := ""
 	if len(c.Reasons) > 0 {
-		reasons = " - " + strings.Join(c.Reasons, ", ")
+		reasons = " - " + redact.Text(strings.Join(c.Reasons, ", "))
 	}
 
-	fmt.Fprintf(p.out, "  %s %3d. %s%s%s%s\n", prefix, index, c.RelPath, typeStr, sizeStr, reasons)
+	fmt.Fprintf(p.out, "  %s %3d. %s%s%s%s\n", prefix, index, redact.Text(c.RelPath), typeStr, sizeStr, reasons)
 }
 
 // parseSelection parses a selection input and updates the selected map.
@@ -256,10 +258,10 @@ func (p *Prompter) parseSelection(input string, selected map[int]*Candidate,
 
 		if add {
 			selected[num] = candidate
-			fmt.Fprintf(p.out, "Added: %s\n", candidate.RelPath)
+			fmt.Fprintf(p.out, "Added: %s\n", redact.Text(candidate.RelPath))
 		} else {
 			delete(selected, num)
-			fmt.Fprintf(p.out, "Removed: %s\n", candidate.RelPath)
+			fmt.Fprintf(p.out, "Removed: %s\n", redact.Text(candidate.RelPath))
 		}
 	}
 }
@@ -323,6 +325,17 @@ func (p *Prompter) PrintReport(result *Result) {
 		return
 	}
 
+	if len(result.Diagnostics) > 0 {
+		fmt.Fprintf(p.out, "=== Diagnostics (%d) ===\n", len(result.Diagnostics))
+		for _, diag := range result.Diagnostics {
+			fmt.Fprintf(p.out, "[%s] %s: %s\n", diag.Severity, redact.Text(diag.Code), redact.Text(diag.Message))
+			if diag.Remediation != "" {
+				fmt.Fprintf(p.out, "       remediation: %s\n", redact.Text(diag.Remediation))
+			}
+		}
+		fmt.Fprintln(p.out)
+	}
+
 	// Print by category
 	for _, cat := range []Category{CategoryRecommended, CategoryMaybe, CategoryRisky} {
 		candidates := result.Candidates.ByCategory(cat)
@@ -340,19 +353,19 @@ func (p *Prompter) PrintReport(result *Result) {
 			}
 
 			fmt.Fprintf(p.out, "[%s] %s (score=%d, %s)\n",
-				typeStr, c.RelPath, c.Score, humanSize(c.Size))
+				typeStr, redact.Text(c.RelPath), c.Score, humanSize(c.Size))
 
 			if len(c.Reasons) > 0 {
-				fmt.Fprintf(p.out, "       reasons: %s\n", strings.Join(c.Reasons, ", "))
+				fmt.Fprintf(p.out, "       reasons: %s\n", redact.Text(strings.Join(c.Reasons, ", ")))
 			}
 			if len(c.SecretWarnings) > 0 {
 				for _, w := range c.SecretWarnings {
-					fmt.Fprintf(p.out, "       WARNING: %s\n", w)
+					fmt.Fprintf(p.out, "       WARNING: %s\n", redact.Text(w))
 				}
 			}
 			if c.IsSubRepo && c.SubRepoURL != "" {
 				url, _ := sanitizeGitRemoteURL(c.SubRepoURL)
-				fmt.Fprintf(p.out, "       remote: %s\n", url)
+				fmt.Fprintf(p.out, "       remote: %s\n", redact.Text(url))
 			}
 		}
 		fmt.Fprintln(p.out)
@@ -368,7 +381,7 @@ func (p *Prompter) PrintReport(result *Result) {
 			} else {
 				url, _ = sanitizeGitRemoteURL(url)
 			}
-			fmt.Fprintf(p.out, "  %s -> %s\n", r.RelPath, url)
+			fmt.Fprintf(p.out, "  %s -> %s\n", redact.Text(r.RelPath), redact.Text(url))
 		}
 		fmt.Fprintln(p.out)
 	}

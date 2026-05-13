@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/dnery/dotstate/dot/internal/modules"
 )
 
 func TestParseSelectionCategoryBoundaries(t *testing.T) {
@@ -77,5 +79,43 @@ func TestParseSelectionRejectsOutOfRange(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "Invalid item number: 4") {
 		t.Fatalf("expected invalid-number warning, got %q", out.String())
+	}
+}
+
+func TestPrintReportRedactsSentinelValues(t *testing.T) {
+	const sentinel = "DOTSTATE_TEST_SECRET_DO_NOT_PRINT"
+	result := &Result{
+		Candidates: CandidateList{
+			{
+				RelPath:        "~/.config/" + sentinel + ".env",
+				Category:       CategoryRisky,
+				Score:          10,
+				Reasons:        []string{"contains " + sentinel},
+				SecretWarnings: []string{"token-assignment: " + sentinel + " (line 1)"},
+			},
+			{
+				RelPath:    "~/src/repo",
+				Category:   CategoryMaybe,
+				IsSubRepo:  true,
+				SubRepoURL: "https://user:" + sentinel + "@github.com/dnery/dotstate.git",
+			},
+		},
+		SubRepos: []*Candidate{
+			{RelPath: "~/src/repo", SubRepoURL: "https://user:" + sentinel + "@github.com/dnery/dotstate.git"},
+		},
+		Diagnostics: []modules.Diagnostic{
+			modules.NewDiagnostic(modules.SeverityWarning, "secrets.gitleaks.unavailable", "missing "+sentinel, "secrets", "secrets:gitleaks"),
+		},
+	}
+	out := &bytes.Buffer{}
+	p := NewPrompterWithIO(strings.NewReader(""), out, false)
+
+	p.PrintReport(result)
+
+	if strings.Contains(out.String(), sentinel) {
+		t.Fatalf("report leaked sentinel:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "<redacted:secret>") || !strings.Contains(out.String(), "secrets.gitleaks.unavailable") {
+		t.Fatalf("report missing redaction marker or diagnostic:\n%s", out.String())
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dnery/dotstate/dot/internal/modules"
 	"github.com/dnery/dotstate/dot/internal/platform"
 )
 
@@ -164,6 +165,10 @@ type Result struct {
 
 	// Errors contains any non-fatal errors encountered.
 	Errors []error
+
+	// Diagnostics contains structured non-fatal scanner/tooling warnings that
+	// are safe to print in reports.
+	Diagnostics []modules.Diagnostic
 }
 
 // Summary returns counts by category.
