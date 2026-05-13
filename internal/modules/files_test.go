@@ -10,6 +10,7 @@ import (
 
 	"github.com/dnery/dotstate/dot/internal/chez"
 	"github.com/dnery/dotstate/dot/internal/config"
+	"github.com/dnery/dotstate/dot/internal/runner"
 	"github.com/dnery/dotstate/dot/internal/testutil"
 )
 
@@ -45,6 +46,65 @@ func TestFilesModuleApplyDryRunPlansWithoutMutating(t *testing.T) {
 	}
 	mock.AssertNotCalled(testutil.MatchCommandPrefix("chezmoi", "--source", filepath.Join(repoDir, "home"), "apply"))
 	mock.AssertNotCalled(testutil.MatchCommandPrefix("chezmoi", "--source", filepath.Join(repoDir, "home"), "managed"))
+}
+
+func TestFilesModuleApplyBacksUpAppliesAndVerifies(t *testing.T) {
+	ctx := context.Background()
+	repoDir := testutil.TempDir(t)
+	homeDir := testutil.TempDir(t)
+	cfg := loadModuleTestConfig(t, repoDir)
+	testutil.TempFile(t, homeDir, ".zshrc", "old\n")
+
+	r := &queuedRunner{t: t}
+	r.Expect("chezmoi", []string{"--source", filepath.Join(repoDir, "home"), "diff"}, "--- old\n+++ new\n", "", nil)
+	r.Expect("chezmoi", []string{"--source", filepath.Join(repoDir, "home"), "managed"}, ".zshrc\n", "", nil)
+	r.Expect("chezmoi", []string{"--source", filepath.Join(repoDir, "home"), "apply"}, "", "", nil)
+	r.Expect("chezmoi", []string{"--source", filepath.Join(repoDir, "home"), "diff"}, "", "", nil)
+
+	files := NewFilesModule(cfg, chez.New("chezmoi", r), homeDir)
+	orch := NewOrchestrator(files)
+	report, err := orch.Run(ctx, OperationApply, RunOptions{})
+	if err != nil {
+		t.Fatalf("Run apply error = %v", err)
+	}
+	if len(report.Backups) != 1 {
+		t.Fatalf("backup count = %d, want 1", len(report.Backups))
+	}
+	if len(report.Results) != 2 {
+		t.Fatalf("result count = %d, want apply+verify", len(report.Results))
+	}
+	if report.Results[0].Status != StatusApplied || report.Results[1].Status != StatusVerified {
+		t.Fatalf("unexpected result statuses: %#v", report.Results)
+	}
+	if r.remaining() != 0 {
+		t.Fatalf("not all expected commands were consumed: %d", r.remaining())
+	}
+}
+
+func TestFilesModulePlanNoopWhenDiffEmpty(t *testing.T) {
+	ctx := context.Background()
+	repoDir := testutil.TempDir(t)
+	homeDir := testutil.TempDir(t)
+	cfg := loadModuleTestConfig(t, repoDir)
+
+	mock := testutil.NewMockRunner(t)
+	mock.OnCommandSuccess(
+		testutil.MatchCommandPrefix("chezmoi", "--source", filepath.Join(repoDir, "home"), "diff"),
+		"",
+	)
+
+	files := NewFilesModule(cfg, chez.New("chezmoi", mock), homeDir)
+	orch := NewOrchestrator(files)
+	report, err := orch.Run(ctx, OperationApply, RunOptions{DryRun: true})
+	if err != nil {
+		t.Fatalf("Run dry-run error = %v", err)
+	}
+	if report.Plan.Summary.Noop != 1 || report.Plan.Summary.Update != 0 {
+		t.Fatalf("unexpected summary: %#v", report.Plan.Summary)
+	}
+	if report.Plan.Changes[0].BackupRequired {
+		t.Fatalf("noop plan should not require backup: %#v", report.Plan.Changes[0])
+	}
 }
 
 func TestFilesModuleBackupCopiesManagedFiles(t *testing.T) {
@@ -115,6 +175,21 @@ func TestFilesModuleBackupCopiesManagedFiles(t *testing.T) {
 	if exists, _ := missingBackup.Current["exists"].(bool); exists {
 		t.Fatalf("missing file backup should record exists=false: %#v", missingBackup.Current)
 	}
+
+	if err := os.WriteFile(managedPath, []byte("changed\n"), 0o644); err != nil {
+		t.Fatalf("failed to change managed file: %v", err)
+	}
+	results, diagnostics, err := files.Restore(ctx, []Backup{*fileBackup})
+	if err != nil {
+		t.Fatalf("Restore error = %v", err)
+	}
+	if len(diagnostics) != 0 {
+		t.Fatalf("unexpected restore diagnostics: %#v", diagnostics)
+	}
+	if len(results) != 1 || results[0].Status != StatusRestored {
+		t.Fatalf("unexpected restore results: %#v", results)
+	}
+	testutil.AssertFileContent(t, managedPath, "export PATH=/usr/bin\n")
 }
 
 func loadModuleTestConfig(t *testing.T, repoDir string) *config.Config {
@@ -133,4 +208,48 @@ func loadModuleTestConfig(t *testing.T, repoDir string) *config.Config {
 		t.Fatalf("failed to load config: %v", err)
 	}
 	return cfg
+}
+
+type queuedRunner struct {
+	t         *testing.T
+	responses []queuedResponse
+}
+
+type queuedResponse struct {
+	name   string
+	args   []string
+	stdout string
+	stderr string
+	err    error
+}
+
+func (r *queuedRunner) Expect(name string, args []string, stdout, stderr string, err error) {
+	r.responses = append(r.responses, queuedResponse{name: name, args: args, stdout: stdout, stderr: stderr, err: err})
+}
+
+func (r *queuedRunner) Run(ctx context.Context, dir, name string, args ...string) (*runner.CmdResult, error) {
+	r.t.Helper()
+	if len(r.responses) == 0 {
+		r.t.Fatalf("unexpected command: %s %v", name, args)
+	}
+	resp := r.responses[0]
+	r.responses = r.responses[1:]
+	if resp.name != name || !sameStrings(resp.args, args) {
+		r.t.Fatalf("command = %s %v, want %s %v", name, args, resp.name, resp.args)
+	}
+	return &runner.CmdResult{Stdout: resp.stdout, Stderr: resp.stderr}, resp.err
+}
+
+func (r *queuedRunner) remaining() int { return len(r.responses) }
+
+func sameStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

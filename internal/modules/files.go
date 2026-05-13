@@ -193,11 +193,10 @@ func (m *FilesModule) Verify(ctx context.Context, operation Operation, changes [
 			return []Result{m.result(plan, PhaseVerify, StatusFailed, firstChange(changes), nil)}, nil, err
 		}
 		current := map[string]any{"diff_empty": strings.TrimSpace(diff) == ""}
-		status := StatusVerified
 		if strings.TrimSpace(diff) != "" {
-			status = StatusFailed
+			return []Result{m.result(plan, PhaseVerify, StatusFailed, firstChange(changes), current)}, nil, fmt.Errorf("chezmoi diff still reports changes after apply")
 		}
-		return []Result{m.result(plan, PhaseVerify, status, firstChange(changes), current)}, nil, nil
+		return []Result{m.result(plan, PhaseVerify, StatusVerified, firstChange(changes), current)}, nil, nil
 	case OperationCapture:
 		return []Result{m.result(plan, PhaseVerify, StatusVerified, firstChange(changes), map[string]any{"capture_command": "chezmoi re-add"})}, nil, nil
 	default:
