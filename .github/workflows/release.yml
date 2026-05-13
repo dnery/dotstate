@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - 'release-*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  darwin-arm64:
+    name: Build Apple Silicon binary
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build dot for macOS Apple Silicon
+        env:
+          CGO_ENABLED: '0'
+          GOOS: darwin
+          GOARCH: arm64
+        run: |
+          set -euo pipefail
+          mkdir -p dist/dot-darwin-arm64
+          VERSION="${GITHUB_REF_NAME:-dev}"
+          COMMIT="$(git rev-parse --short HEAD)"
+          DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          LDFLAGS="-s -w -X github.com/dnery/dotstate/dot/internal/cli.version=${VERSION} -X github.com/dnery/dotstate/dot/internal/cli.commit=${COMMIT} -X github.com/dnery/dotstate/dot/internal/cli.date=${DATE}"
+          go build -trimpath -ldflags "${LDFLAGS}" -o dist/dot-darwin-arm64/dot ./cmd/dot
+          cp scripts/bootstrap-macos.sh dist/dot-darwin-arm64/bootstrap-macos.sh
+          tar -C dist -czf dist/dot-darwin-arm64.tar.gz dot-darwin-arm64
+          shasum -a 256 dist/dot-darwin-arm64.tar.gz > dist/SHA256SUMS
+
+      - name: Upload GitHub Release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/dot-darwin-arm64.tar.gz
+            dist/SHA256SUMS
+          fail_on_unmatched_files: true
+          generate_release_notes: true

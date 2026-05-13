@@ -3,12 +3,15 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -18,9 +21,11 @@ import (
 	doterrors "github.com/dnery/dotstate/dot/internal/errors"
 	"github.com/dnery/dotstate/dot/internal/gitx"
 	"github.com/dnery/dotstate/dot/internal/logging"
+	"github.com/dnery/dotstate/dot/internal/macos"
 	"github.com/dnery/dotstate/dot/internal/modules"
 	"github.com/dnery/dotstate/dot/internal/platform"
 	"github.com/dnery/dotstate/dot/internal/runner"
+	"github.com/dnery/dotstate/dot/internal/schedule"
 	"github.com/dnery/dotstate/dot/internal/sync"
 	"github.com/dnery/dotstate/dot/internal/ui"
 )
@@ -95,6 +100,8 @@ func Execute() int {
 	root.AddCommand(cmdApply(a))
 	root.AddCommand(cmdCapture(a))
 	root.AddCommand(cmdSync(a))
+	root.AddCommand(cmdMacOS(a))
+	root.AddCommand(cmdSchedule(a))
 	root.AddCommand(cmdDiscover(a))
 
 	if err := root.Execute(); err != nil {
@@ -260,29 +267,21 @@ func cmdDoctor(a *app) *cobra.Command {
 }
 
 func cmdBootstrap(a *app) *cobra.Command {
-	var repoURL string
+	var (
+		repoURL          string
+		skipOPCheckpoint bool
+	)
 
 	cmd := &cobra.Command{
 		Use:   "bootstrap",
 		Short: "Clone repo (if needed) and prepare this machine",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Bootstrap can run without an existing config in cwd.
-			if repoURL == "" && a.cfgPath == "" {
-				return doterrors.NewUserError("bootstrap requires --repo, or run from a repo that contains dot.toml")
+			cfg, err := a.bootstrapConfig(repoURL)
+			if err != nil {
+				return err
 			}
 
-			// If config can be loaded, use it; else create minimal.
-			var cfg *config.Config
-			if a.cfgPath != "" {
-				loaded, _, err := a.loadConfig()
-				if err != nil {
-					return err
-				}
-				cfg = loaded
-			} else {
-				cfg = config.Default()
-				cfg.Repo.URL = repoURL
-			}
+			printBootstrapPrerequisites(cfg, skipOPCheckpoint)
 
 			if a.logger != nil {
 				a.logger.Info("bootstrapping",
@@ -292,10 +291,14 @@ func cmdBootstrap(a *app) *cobra.Command {
 				)
 			}
 
-			r := runner.New()
-			g := gitx.New(cfg.Tools.Git, r)
-			if err := g.EnsureCloned(context.Background(), cfg.Repo.URL, cfg.Repo.Path, cfg.Repo.Branch); err != nil {
-				return doterrors.Wrap(err, "clone failed")
+			if cfg.Repo.URL != "" {
+				r := runner.New()
+				g := gitx.New(cfg.Tools.Git, r)
+				if err := g.EnsureCloned(context.Background(), cfg.Repo.URL, cfg.Repo.Path, cfg.Repo.Branch); err != nil {
+					return doterrors.Wrap(err, "clone failed")
+				}
+			} else {
+				fmt.Println("Repo URL is empty; skipping clone and treating repo.path as an existing local checkout.")
 			}
 
 			fmt.Println(ui.Title("Bootstrap complete"))
@@ -303,14 +306,75 @@ func cmdBootstrap(a *app) *cobra.Command {
 			fmt.Println()
 			fmt.Println("Next steps:")
 			fmt.Println("  1. cd", cfg.Repo.Path)
-			fmt.Println("  2. dot apply")
+			fmt.Println("  2. dot doctor")
+			fmt.Println("  3. dot apply --dry-run")
+			fmt.Println("  4. dot sync --dry-run")
+			fmt.Println("  5. dot macos audit --json")
+			fmt.Println("  6. dot schedule install")
 
 			return nil
 		},
 	}
 
 	cmd.Flags().StringVar(&repoURL, "repo", "", "Git URL of your dotstate repo (required if not running inside the repo)")
+	cmd.Flags().BoolVar(&skipOPCheckpoint, "skip-op-checkpoint", false, "Do not print the 1Password/op manual checkpoint")
 	return cmd
+}
+
+func (a *app) bootstrapConfig(repoURL string) (*config.Config, error) {
+	cfg, _, err := a.loadConfigSilent()
+	if err == nil {
+		if repoURL != "" {
+			cfg.Repo.URL = repoURL
+		}
+		return cfg, nil
+	}
+	if repoURL == "" {
+		return nil, doterrors.NewUserError("bootstrap requires --repo, or run from a repo that contains dot.toml")
+	}
+	cfg = config.Default()
+	cfg.Repo.URL = repoURL
+	return cfg, nil
+}
+
+func printBootstrapPrerequisites(cfg *config.Config, skipOPCheckpoint bool) {
+	fmt.Println(ui.Title("Bootstrap checks"))
+	if runtime.GOOS == "darwin" {
+		if err := exec.Command("xcode-select", "-p").Run(); err != nil {
+			fmt.Println("  Xcode Command Line Tools: manual checkpoint required")
+			fmt.Println("    Run: xcode-select --install")
+		} else {
+			fmt.Println("  Xcode Command Line Tools: detected")
+		}
+		if path, err := exec.LookPath("brew"); err != nil {
+			fmt.Println("  Homebrew: not found")
+			fmt.Println("    Install from https://brew.sh, then run: brew install git chezmoi")
+		} else {
+			fmt.Printf("  Homebrew: %s\n", path)
+		}
+	} else {
+		fmt.Printf("  Platform: %s/%s (macOS bootstrap checks skipped)\n", runtime.GOOS, runtime.GOARCH)
+	}
+
+	if skipOPCheckpoint {
+		fmt.Println("  1Password/op checkpoint: skipped by flag")
+	} else if path, err := exec.LookPath(firstNonEmpty(cfg.Tools.OP, "op")); err != nil {
+		fmt.Println("  1Password/op checkpoint: op not found")
+		fmt.Println("    Install 1Password CLI, sign in to the desktop app, and enable CLI integration before applying secrets-backed state.")
+	} else {
+		fmt.Printf("  1Password/op checkpoint: %s\n", path)
+		fmt.Println("    Unlock 1Password and verify with: op account list")
+	}
+	fmt.Println()
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func cmdApply(a *app) *cobra.Command {
@@ -523,6 +587,150 @@ func joinCapabilities(capabilities []modules.Capability) string {
 		parts = append(parts, string(capability))
 	}
 	return strings.Join(parts, ",")
+}
+
+func cmdMacOS(a *app) *cobra.Command {
+	macosCmd := &cobra.Command{
+		Use:   "macos",
+		Short: "macOS-specific state commands",
+	}
+
+	var jsonOut bool
+	auditCmd := &cobra.Command{
+		Use:   "audit",
+		Short: "Audit macOS state without mutating it",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if !jsonOut {
+				return doterrors.NewUserError("dot macos audit currently requires --json")
+			}
+			host, _ := os.Hostname()
+			envelope := macos.NewBootstrapAudit(runtime.GOOS, runtime.GOARCH, host, time.Now())
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			return enc.Encode(envelope)
+		},
+	}
+	auditCmd.Flags().BoolVar(&jsonOut, "json", false, "Emit dotstate.audit.v1 JSON")
+
+	macosCmd.AddCommand(auditCmd)
+	return macosCmd
+}
+
+func cmdSchedule(a *app) *cobra.Command {
+	scheduleCmd := &cobra.Command{
+		Use:   "schedule",
+		Short: "Manage the dotstate macOS user LaunchAgent",
+	}
+
+	var (
+		dotBin   string
+		interval int
+		noLoad   bool
+		dryRun   bool
+	)
+	installCmd := &cobra.Command{
+		Use:   "install",
+		Short: "Install and load the dotstate sync LaunchAgent",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, _, err := a.loadConfig()
+			if err != nil {
+				return err
+			}
+			if dotBin == "" {
+				dotBin, err = os.Executable()
+				if err != nil {
+					return doterrors.Wrap(err, "resolve dot executable")
+				}
+			}
+			opts := schedule.OptionsFromConfig(cfg, dotBin)
+			if interval > 0 {
+				opts.IntervalMinutes = interval
+			}
+			opts.NoLoad = noLoad
+			if dryRun {
+				printScheduleStatus("Schedule install plan", &schedule.Status{
+					Label:           schedule.Label,
+					Path:            schedule.LaunchAgentPath(a.plat.Home),
+					Installed:       false,
+					Loaded:          false,
+					IntervalMinutes: opts.IntervalMinutes,
+					ProgramArgs:     []string{opts.DotBin, "--config", opts.ConfigPath, "sync"},
+					Message:         "Dry run only: would write the LaunchAgent plist and load it with launchctl unless --no-load is set. No shutdown hook would be installed.",
+				})
+				return nil
+			}
+			mgr := schedule.NewManager(a.plat.Home, runner.New())
+			status, err := mgr.Install(context.Background(), opts)
+			if err != nil {
+				return wrapScheduleError(err)
+			}
+			printScheduleStatus("Schedule installed", status)
+			return nil
+		},
+	}
+	installCmd.Flags().StringVar(&dotBin, "dot-bin", "", "Path to dot binary for launchd (defaults to current executable)")
+	installCmd.Flags().IntVar(&interval, "interval", 0, "Sync interval in minutes (defaults to sync.interval_minutes)")
+	installCmd.Flags().BoolVar(&noLoad, "no-load", false, "Write the LaunchAgent without loading it into launchd")
+	installCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print the LaunchAgent plan without writing or loading it")
+
+	statusCmd := &cobra.Command{
+		Use:   "status",
+		Short: "Show dotstate sync LaunchAgent status",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			mgr := schedule.NewManager(a.plat.Home, runner.New())
+			status, err := mgr.Inspect(context.Background())
+			if err != nil {
+				return wrapScheduleError(err)
+			}
+			printScheduleStatus("Schedule status", status)
+			return nil
+		},
+	}
+
+	removeCmd := &cobra.Command{
+		Use:   "remove",
+		Short: "Unload and remove the dotstate sync LaunchAgent",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			mgr := schedule.NewManager(a.plat.Home, runner.New())
+			status, err := mgr.Remove(context.Background())
+			if err != nil {
+				return wrapScheduleError(err)
+			}
+			printScheduleStatus("Schedule removed", status)
+			return nil
+		},
+	}
+
+	scheduleCmd.AddCommand(installCmd, statusCmd, removeCmd)
+	return scheduleCmd
+}
+
+func wrapScheduleError(err error) error {
+	if errors.Is(err, schedule.ErrUnsupported) {
+		return doterrors.WithCode(err, doterrors.ExitUnavailable)
+	}
+	return err
+}
+
+func printScheduleStatus(title string, status *schedule.Status) {
+	fmt.Println(ui.Title(title))
+	if status == nil {
+		fmt.Println("  No schedule status available.")
+		return
+	}
+	fmt.Printf("  Label: %s\n", status.Label)
+	fmt.Printf("  Path: %s\n", status.Path)
+	fmt.Printf("  Installed: %t\n", status.Installed)
+	fmt.Printf("  Loaded: %t\n", status.Loaded)
+	if status.IntervalMinutes > 0 {
+		fmt.Printf("  Interval: %d minutes\n", status.IntervalMinutes)
+	}
+	if len(status.ProgramArgs) > 0 {
+		fmt.Printf("  Command: %s\n", strings.Join(status.ProgramArgs, " "))
+	}
+	if status.Message != "" {
+		fmt.Printf("  Note: %s\n", status.Message)
+	}
 }
 
 func cmdDiscover(a *app) *cobra.Command {
