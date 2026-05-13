@@ -335,7 +335,7 @@ Add these fixture cases before implementing the corresponding audit or apply beh
 | `secrets` | missing `op`; locked/unavailable `op`; reference-only fact; cache metadata; sentinel secret redaction. |
 | `files` | managed path normalization; unreadable file diagnostic; secret-looking managed file diagnostic. |
 
-Fixture outputs must use the schemas from [modules.md](modules.md) and must not contain raw sentinel secrets.
+Fixture outputs must use the schemas from [modules.md](modules.md) and must not contain raw sentinel secrets. The current verification harness also runs `test/e2e/verify_artifacts_no_sentinel.sh` over generated e2e bundles so future macOS scenarios fail if review artifacts leak sentinel values.
 
 ## Non-goals
 

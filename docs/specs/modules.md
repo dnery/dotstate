@@ -345,6 +345,8 @@ Artifacts may be absent. An absent artifact means "no desired state declared"; i
 
 ## Contract fixtures before implementation
 
+Implementation status: the v1 fixture tree now exists under `test/fixtures/modules/v1/` with golden coverage for files facts, plans, redaction, permission diagnostics, result records, and the bootstrap audit envelope.
+
 Every new module must add fixtures before broad implementation. Use this layout:
 
 ```text
