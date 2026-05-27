@@ -162,6 +162,37 @@ func TestSubreposModuleClonesMissingRepoAndStatusReportsIt(t *testing.T) {
 	}
 }
 
+func TestSubreposModuleKeepsCredentialedRemoteManual(t *testing.T) {
+	ctx := context.Background()
+	repoDir := testutil.TempDir(t)
+	homeDir := testutil.TempDir(t)
+	cfg := loadMacOSTestConfig(t, repoDir)
+	const sentinel = "DOTSTATE_TEST_SECRET_DO_NOT_PRINT"
+	testutil.TempFile(t, repoDir, "state/subrepos.toml", "[[subrepo]]\npath = \"~/.config/private\"\nurl = \"ssh://ghp_"+sentinel+"@github.com/example/private.git\"\nbranch = \"main\"\n")
+	r := testutil.NewMockRunner(t)
+	mod := newSubreposModule(cfg, r, homeDir)
+	orch := modules.NewOrchestrator(mod)
+
+	report, err := orch.Run(ctx, modules.OperationApply, modules.RunOptions{})
+	if err != nil {
+		t.Fatalf("Run apply error = %v", err)
+	}
+	r.AssertCallCount(0)
+	if report.Plan.Summary.Manual != 1 {
+		t.Fatalf("plan summary = %#v, want manual credentialed subrepo", report.Plan.Summary)
+	}
+	if len(report.Results) == 0 || report.Results[0].Status != modules.StatusManual {
+		t.Fatalf("results = %#v, want manual result", report.Results)
+	}
+	encoded, err := json.Marshal(report)
+	if err != nil {
+		t.Fatalf("Marshal report: %v", err)
+	}
+	if strings.Contains(string(encoded), sentinel) {
+		t.Fatalf("credentialed subrepo remote leaked sentinel: %s", encoded)
+	}
+}
+
 func loadMacOSTestConfig(t *testing.T, repoDir string) *config.Config {
 	t.Helper()
 	configPath := testutil.TempFile(t, repoDir, config.ConfigFileName, "[repo]\npath = \""+repoDir+"\"\n")
@@ -186,6 +217,9 @@ func (r *cloneRunner) Run(ctx context.Context, dir, name string, args ...string)
 		}
 	}
 	dest := args[len(args)-1]
+	if _, err := os.Stat(filepath.Dir(dest)); err != nil {
+		r.t.Fatalf("clone parent dir was not prepared: %v", err)
+	}
 	if err := os.MkdirAll(filepath.Join(dest, ".git"), 0o755); err != nil {
 		return nil, err
 	}

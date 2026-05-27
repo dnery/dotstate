@@ -164,12 +164,18 @@ func (o *Orchestrator) Run(ctx context.Context, operation Operation, opts RunOpt
 			if err != nil {
 				return report, fmt.Errorf("%s apply: %w", mod.Surface(), err)
 			}
+			if err := failedResultsError(mod.Surface(), PhaseApply, results); err != nil {
+				return report, err
+			}
 
 			verifyResults, verifyDiagnostics, err := mod.Verify(ctx, operation, changes, plan)
 			report.Diagnostics = append(report.Diagnostics, verifyDiagnostics...)
 			report.Results = append(report.Results, verifyResults...)
 			if err != nil {
 				return report, fmt.Errorf("%s verify: %w", mod.Surface(), err)
+			}
+			if err := failedResultsError(mod.Surface(), PhaseVerify, verifyResults); err != nil {
+				return report, err
 			}
 		case OperationCapture:
 			results, diagnostics, err := mod.Capture(ctx, changes, plan)
@@ -178,12 +184,18 @@ func (o *Orchestrator) Run(ctx context.Context, operation Operation, opts RunOpt
 			if err != nil {
 				return report, fmt.Errorf("%s capture: %w", mod.Surface(), err)
 			}
+			if err := failedResultsError(mod.Surface(), PhaseCapture, results); err != nil {
+				return report, err
+			}
 
 			verifyResults, verifyDiagnostics, err := mod.Verify(ctx, operation, changes, plan)
 			report.Diagnostics = append(report.Diagnostics, verifyDiagnostics...)
 			report.Results = append(report.Results, verifyResults...)
 			if err != nil {
 				return report, fmt.Errorf("%s verify: %w", mod.Surface(), err)
+			}
+			if err := failedResultsError(mod.Surface(), PhaseVerify, verifyResults); err != nil {
+				return report, err
 			}
 		default:
 			return report, fmt.Errorf("unsupported operation: %s", operation)
@@ -206,6 +218,9 @@ func (o *Orchestrator) Restore(ctx context.Context, backups []Backup) (*RunRepor
 		report.Results = append(report.Results, results...)
 		if err != nil {
 			return report, fmt.Errorf("%s restore: %w", mod.Surface(), err)
+		}
+		if err := failedResultsError(mod.Surface(), PhaseRestore, results); err != nil {
+			return report, err
 		}
 	}
 	return report, nil
@@ -261,6 +276,19 @@ func isMutation(action ChangeAction) bool {
 	default:
 		return false
 	}
+}
+
+func failedResultsError(surface string, phase Phase, results []Result) error {
+	failed := 0
+	for _, result := range results {
+		if result.Status == StatusFailed {
+			failed++
+		}
+	}
+	if failed == 0 {
+		return nil
+	}
+	return fmt.Errorf("%s %s returned %d failed result(s)", surface, phase, failed)
 }
 
 func hasCapability(capabilities []Capability, capability Capability) bool {

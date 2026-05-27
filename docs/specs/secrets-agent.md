@@ -1,16 +1,16 @@
-# secrets-env cache architecture
+# senv cache architecture
 
 Status: current implementation
 
-This file keeps its historical name for link compatibility. The active design is not a resident daemon. Shell/env secrets are managed by the `secrets-env` CLI, which refreshes 1Password values into local mode-600 cache files and lets shell startup source only existing files.
+This file keeps its historical name for link compatibility. The active design is not a resident daemon. Shell/env secrets are managed by the `senv` CLI, which refreshes 1Password values into local mode-600 cache files and lets shell startup source only existing files.
 
 ## Contract
 
 The single supported shell/env secret flow is:
 
-1. Keep canonical secret values in 1Password Secure Notes configured in `~/.config/dotstate/secrets-env.json`.
-2. Refresh local cache files explicitly with `secrets-env refresh --all` or `secrets-env refresh --scope <name>`.
-3. Treat `secrets-env refresh --all` as dynamic discovery: it lists configured 1Password source vaults, reads every Secure Note whose title starts with `local/`, and writes one cache per note plus the aggregate cache.
+1. Keep canonical secret values in 1Password Secure Notes configured in `~/.config/dotstate/senv.json`.
+2. Refresh local cache files explicitly with `senv refresh --all` or `senv refresh --scope <name>`.
+3. Treat `senv refresh --all` as dynamic discovery: it lists configured 1Password source vaults, reads every Secure Note whose title starts with `local/`, and writes one cache per note plus the aggregate cache.
 4. Store generated cache files under `~/.local/state/dotstate/secrets/`.
 5. Let shell startup source existing cache files without contacting 1Password.
 
@@ -18,7 +18,7 @@ Shell startup must stay quiet, deterministic, and non-interactive. It must not c
 
 ## CLI surface
 
-`secrets-env` supports these commands:
+`senv` supports these commands:
 
 - `inventory`: print redacted target/source metadata.
 - `migrate`: create or update allowed Secure Notes from configured migration sources.
@@ -34,7 +34,7 @@ Normal interactive shells should use `refresh` plus startup loaders. `run` is a 
 Default config path:
 
 ```text
-~/.config/dotstate/secrets-env.json
+~/.config/dotstate/senv.json
 ```
 
 The config contains:
@@ -59,7 +59,7 @@ Every scope must define `name`, `account`, `vault`, and `item`. Mutable scopes m
 
 ## Cache files
 
-For every refreshed scope, `secrets-env` writes three shell-specific files:
+For every refreshed scope, `senv` writes three shell-specific files:
 
 ```text
 ~/.local/state/dotstate/secrets/<scope>.env
@@ -67,7 +67,7 @@ For every refreshed scope, `secrets-env` writes three shell-specific files:
 ~/.local/state/dotstate/secrets/<scope>.ps1
 ```
 
-`secrets-env refresh --all` also writes the aggregate cache:
+`senv refresh --all` also writes the aggregate cache:
 
 ```text
 ~/.local/state/dotstate/secrets/secrets.env
@@ -83,20 +83,20 @@ Rendered formats:
 - fish: `set -gx NAME 'value'`
 - PowerShell: `$env:NAME = 'value'`
 
-Only valid shell variable names are exported. Empty values and note metadata are skipped. `local/...` notes store one environment variable per 1Password field. Secret values should use concealed/password fields; non-secret values may use text fields. The Secure Note body (`notesPlain`) is metadata only and is not parsed as dotenv. The aggregate cache merges refreshed notes in deterministic order and applies `aggregate_exclude`, so sensitive automation-only variables can remain scoped instead of becoming global shell state. If multiple `local/...` notes define the same variable, the last note wins and `secrets-env` prints a large redacted warning with each conflicting note title.
+Only valid shell variable names are exported. Empty values and note metadata are skipped. `local/...` notes store one environment variable per 1Password field. Secret values should use concealed/password fields; non-secret values may use text fields. The Secure Note body (`notesPlain`) is metadata only and is not parsed as dotenv. The aggregate cache merges refreshed notes in deterministic order and applies `aggregate_exclude`, so sensitive automation-only variables can remain scoped instead of becoming global shell state. If multiple `local/...` notes define the same variable, the last note wins and `senv` prints a large redacted warning with each conflicting note title.
 
 ## Shell integration
 
 zsh/bash startup loads:
 
 ```text
-~/.config/dotstate/secrets-env.sh
+~/.config/dotstate/senv.sh
 ```
 
 fish startup loads:
 
 ```text
-~/.config/fish/conf.d/secrets-env.fish
+~/.config/fish/conf.d/senv.fish
 ```
 
 Those loaders only source existing aggregate cache files. If a cache file is missing, startup continues without output or 1Password access.
@@ -104,13 +104,13 @@ Those loaders only source existing aggregate cache files. If a cache file is mis
 SFR3-specific refresh uses:
 
 ```bash
-sfr3-secrets-refresh
+sfr3-senv-refresh
 ```
 
 That helper delegates to:
 
 ```bash
-secrets-env refresh --scope sfr3
+senv refresh --scope sfr3
 ```
 
 Then it sources the SFR3 cache for the current shell.
@@ -119,9 +119,9 @@ Then it sources the SFR3 cache for the current shell.
 
 Migration is separate from daily refresh:
 
-- `secrets-env migrate --dry-run` reports intended target updates without mutating.
-- `secrets-env migrate --apply` writes only allowlisted Secure Notes.
-- `secrets-env archive-sources --apply` archives old source items only after cache parity is verified.
+- `senv migrate --dry-run` reports intended target updates without mutating.
+- `senv migrate --apply` writes only allowlisted Secure Notes.
+- `senv archive-sources --apply` archives old source items only after cache parity is verified.
 
 Migration never prints secret values. Source items and target fields are reported as metadata only.
 
@@ -130,7 +130,7 @@ Migration never prints secret values. Source items and target fields are reporte
 - Missing config: command exits nonzero with a read/parse error.
 - Invalid scope config: validation fails before reading or writing secrets.
 - Missing cache on startup: shell startup stays quiet and continues without those variables.
-- Missing aggregate cache for `secrets-env run`: command exits and tells the user to refresh first.
+- Missing aggregate cache for `senv run`: command exits and tells the user to refresh first.
 - Locked 1Password desktop app: refresh/migration may require desktop approval and can fail or block until the user unlocks 1Password.
 - Failed refresh: temp files are cleaned up and the previous installed cache remains in place.
 

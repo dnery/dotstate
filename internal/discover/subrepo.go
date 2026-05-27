@@ -174,6 +174,12 @@ func (d *SubRepoDetector) getCurrentBranch(repoPath string) (string, error) {
 	return "", nil
 }
 
+// SanitizeGitRemoteURL returns a git remote URL with embedded credentials removed.
+// The boolean reports whether any credential-like component was redacted.
+func SanitizeGitRemoteURL(raw string) (string, bool) {
+	return sanitizeGitRemoteURL(raw)
+}
+
 func sanitizeGitRemoteURL(raw string) (string, bool) {
 	trimmed := strings.TrimSpace(raw)
 	parsed, err := url.Parse(trimmed)
@@ -203,8 +209,17 @@ func sanitizeGitRemoteURL(raw string) (string, bool) {
 		return parsed.String(), true
 	}
 
+	username := parsed.User.Username()
 	if _, hasPassword := parsed.User.Password(); hasPassword {
-		parsed.User = url.User(parsed.User.Username())
+		if looksCredentialishUserinfo(username) {
+			parsed.User = nil
+		} else {
+			parsed.User = url.User(username)
+		}
+		return parsed.String(), true
+	}
+	if looksCredentialishUserinfo(username) {
+		parsed.User = nil
 		return parsed.String(), true
 	}
 
@@ -277,7 +292,13 @@ func redactMalformedURLCredentials(raw string) (string, bool) {
 	}
 	username, _, hasPassword := strings.Cut(userinfo, ":")
 	if hasPassword {
+		if looksCredentialishUserinfo(username) {
+			return raw[:authorityStart] + host + suffix, true
+		}
 		return raw[:authorityStart] + username + "@" + host + suffix, true
+	}
+	if looksCredentialishUserinfo(username) {
+		return raw[:authorityStart] + host + suffix, true
 	}
 	return raw, false
 }

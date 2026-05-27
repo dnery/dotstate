@@ -1,6 +1,6 @@
 //go:build !windows
 
-package secretsenv
+package senv
 
 import (
 	"fmt"

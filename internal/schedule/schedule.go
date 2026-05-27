@@ -74,18 +74,30 @@ func LaunchAgentPath(home string) string {
 }
 
 // OptionsFromConfig builds install options from dotstate config and a dot binary path.
-func OptionsFromConfig(cfg *config.Config, dotBin string) InstallOptions {
+func OptionsFromConfig(cfg *config.Config, dotBin string) (InstallOptions, error) {
 	interval := cfg.Sync.IntervalMinutes
 	if interval <= 0 {
 		interval = config.DefaultSyncInterval
 	}
+	configPath, err := filepath.Abs(cfg.ConfigPath())
+	if err != nil {
+		return InstallOptions{}, fmt.Errorf("resolve absolute config path: %w", err)
+	}
+	repoRoot, err := filepath.Abs(cfg.RepoRoot())
+	if err != nil {
+		return InstallOptions{}, fmt.Errorf("resolve absolute repo root: %w", err)
+	}
+	logDir, err := filepath.Abs(cfg.LogPath())
+	if err != nil {
+		return InstallOptions{}, fmt.Errorf("resolve absolute schedule log dir: %w", err)
+	}
 	return InstallOptions{
 		DotBin:          dotBin,
-		ConfigPath:      cfg.ConfigPath(),
-		RepoRoot:        cfg.RepoRoot(),
-		LogDir:          cfg.LogPath(),
+		ConfigPath:      configPath,
+		RepoRoot:        repoRoot,
+		LogDir:          logDir,
 		IntervalMinutes: interval,
-	}
+	}, nil
 }
 
 // Install writes the LaunchAgent plist and registers it with launchd unless NoLoad is set.

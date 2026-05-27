@@ -190,12 +190,54 @@ func TestOrchestratorSanitizesBackupsAndResults(t *testing.T) {
 	}
 }
 
+func TestOrchestratorFailsOnFailedResultWithoutModuleError(t *testing.T) {
+	ctx := context.Background()
+	change := Change{
+		ChangeID:       "safe:item:update",
+		Surface:        "safe",
+		ID:             "safe:item",
+		Action:         ActionUpdate,
+		Source:         Source{Kind: "fixture", Value: "test"},
+		ManagedBy:      []string{"dotstate"},
+		Sensitivity:    SensitivityPublic,
+		Confidence:     ConfidenceHigh,
+		Capability:     []Capability{CapabilityAutoApply},
+		Risk:           LowRisk(true),
+		BackupRequired: false,
+	}
+	mod := &stubModule{
+		surface: "safe",
+		changes: []Change{change},
+		verifyResults: []Result{{
+			SchemaVersion: SchemaResultV1,
+			Surface:       "safe",
+			ID:            "safe:item",
+			ChangeID:      "safe:item:update",
+			Phase:         PhaseVerify,
+			Status:        StatusFailed,
+		}},
+	}
+	orch := NewOrchestrator(mod)
+
+	report, err := orch.Run(ctx, OperationApply, RunOptions{})
+	if err == nil {
+		t.Fatal("expected failed verify result to make run fail")
+	}
+	if !strings.Contains(err.Error(), "safe verify returned 1 failed result") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(report.Results) != 1 || report.Results[0].Status != StatusFailed {
+		t.Fatalf("expected failed result in report, got %#v", report.Results)
+	}
+}
+
 type stubModule struct {
-	surface      string
-	changes      []Change
-	backups      []Backup
-	applyResults []Result
-	applied      bool
+	surface       string
+	changes       []Change
+	backups       []Backup
+	applyResults  []Result
+	verifyResults []Result
+	applied       bool
 }
 
 func (m *stubModule) Surface() string { return m.surface }
@@ -213,7 +255,7 @@ func (m *stubModule) Capture(context.Context, []Change, *Plan) ([]Result, []Diag
 	return nil, nil, nil
 }
 func (m *stubModule) Verify(context.Context, Operation, []Change, *Plan) ([]Result, []Diagnostic, error) {
-	return nil, nil, nil
+	return m.verifyResults, nil, nil
 }
 func (m *stubModule) Restore(context.Context, []Backup) ([]Result, []Diagnostic, error) {
 	return nil, nil, nil

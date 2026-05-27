@@ -151,6 +151,8 @@ func TestSanitizeGitRemoteURLRedactsMalformedCredentialedHTTPSURL(t *testing.T) 
 		"https://ghp_%ZZ@github.com/user/repo.git":                 "https://github.com/user/repo.git",
 		"https://ghp_SECRET@":                                      "https://",
 		"https://github.com/user/repo.git?access_token=ghp_SECRET": "https://github.com/user/repo.git?access_token=REDACTED",
+		"ssh://ghp_SECRET@github.com/user/repo.git":                "ssh://github.com/user/repo.git",
+		"ssh://ghp_SECRET:pass@github.com/user/repo.git":           "ssh://github.com/user/repo.git",
 		"ghp_SECRET@github.com:user/repo.git":                      "github.com:user/repo.git",
 		"user:pass@github.com:user/repo.git":                       "github.com:user/repo.git",
 	}

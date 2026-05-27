@@ -78,7 +78,7 @@
       "severity": "info",
       "code": "macos.keychain.reference_only",
       "message": "Keychain contents are never read or serialized; store 1Password/op references or manual checkpoints instead of secret values.",
-      "remediation": "Keep decrypted values out of dotstate output. Use op:// references or secrets-env cache metadata only.",
+      "remediation": "Keep decrypted values out of dotstate output. Use op:// references or senv cache metadata only.",
       "surface": "secrets",
       "id": "secrets:keychain",
       "source": {

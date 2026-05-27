@@ -103,7 +103,7 @@ The repo stores only these references.
 
 1Password CLI calls can be slow.
 
-Interactive shell access is intentionally a separate concern from single-run `dot apply`. Shell/env secrets use the implemented `secrets-env` cache flow: explicit refresh from 1Password into mode-600 files, then shell startup sources existing cache files only. See [docs/specs/secrets-agent.md](secrets-agent.md) for the current architecture.
+Interactive shell access is intentionally a separate concern from single-run `dot apply`. Shell/env secrets use the implemented `senv` cache flow: explicit refresh from 1Password into mode-600 files, then shell startup sources existing cache files only. See [docs/specs/secrets-agent.md](secrets-agent.md) for the current architecture.
 
 Design requirement:
 - `dot apply` should cache secret fetches **within a single run**.

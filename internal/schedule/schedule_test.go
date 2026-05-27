@@ -151,12 +151,37 @@ func TestOptionsFromConfigUsesConfiguredInterval(t *testing.T) {
 	}
 	cfg.Sync.IntervalMinutes = 42
 
-	opts := OptionsFromConfig(cfg, "/bin/dot")
+	opts, err := OptionsFromConfig(cfg, "/bin/dot")
+	if err != nil {
+		t.Fatalf("OptionsFromConfig error = %v", err)
+	}
 	if opts.IntervalMinutes != 42 {
 		t.Fatalf("IntervalMinutes = %d, want 42", opts.IntervalMinutes)
 	}
 	if opts.ConfigPath != cfgPath || opts.RepoRoot != repo || opts.LogDir != filepath.Join(repo, "state", "logs") {
 		t.Fatalf("unexpected paths: %#v", opts)
+	}
+}
+
+func TestOptionsFromConfigMakesConfigPathAbsolute(t *testing.T) {
+	repo := testutil.TempDir(t)
+	testutil.TempDotToml(t, repo, testutil.MinimalDotToml())
+	t.Chdir(repo)
+	cfg, err := config.Load(config.ConfigFileName)
+	if err != nil {
+		t.Fatalf("Load config: %v", err)
+	}
+
+	opts, err := OptionsFromConfig(cfg, "/bin/dot")
+	if err != nil {
+		t.Fatalf("OptionsFromConfig error = %v", err)
+	}
+	want := filepath.Join(repo, config.ConfigFileName)
+	if opts.ConfigPath != want {
+		t.Fatalf("ConfigPath = %q, want absolute path %q", opts.ConfigPath, want)
+	}
+	if opts.RepoRoot != repo || opts.LogDir != filepath.Join(repo, "state", "logs") {
+		t.Fatalf("schedule paths were not absolute to repo: %#v", opts)
 	}
 }
 

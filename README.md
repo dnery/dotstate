@@ -315,7 +315,7 @@ output into public places without review.
 
 ```text
 .
-├── cmd/                      # CLI entrypoints: dot and secrets-env
+├── cmd/                      # CLI entrypoints: dot and senv
 ├── internal/                 # core packages and module implementations
 ├── home/                     # Chezmoi source state for managed files
 ├── state/                    # desired artifacts, logs, captures, local runtime state

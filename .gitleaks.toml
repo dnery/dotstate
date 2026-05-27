@@ -1,6 +1,6 @@
 # Gitleaks configuration for dotstate
 # Run with: gitleaks detect --source . --config .gitleaks.toml
-# Install: go install github.com/gitleaks/gitleaks/v8@latest
+# Install: go install github.com/zricethezav/gitleaks/v8@latest
 
 title = "dotstate gitleaks config"
 

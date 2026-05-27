@@ -1,4 +1,4 @@
-package secretsenv
+package senv
 
 import (
 	"errors"
@@ -211,6 +211,34 @@ func TestFindSecureNoteIDPrefersIDAndRejectsAmbiguousTitles(t *testing.T) {
 	_, _, err = findSecureNoteID(append(items, opListItem{ID: "note-id-2", Title: "Shared", Category: "SECURE_NOTE"}), "Shared")
 	if err == nil {
 		t.Fatal("expected duplicate secure-note titles to be rejected")
+	}
+}
+
+func TestArchiveSourcesApplyRequiresMutationAllowlist(t *testing.T) {
+	cfg := &Config{
+		OPBin:    filepath.Join(t.TempDir(), "missing-op"),
+		CacheDir: t.TempDir(),
+		Scopes: []ScopeConfig{{
+			Name:    "personal",
+			Account: "allowed-account",
+			Vault:   "Allowed",
+			Item:    "local/secrets",
+		}},
+		Migration: MigrationConfig{Sources: []MigrationSource{{
+			Scope:   "personal",
+			Account: "source-account",
+			Vault:   "SourceVault",
+			Item:    "legacy/api",
+		}}},
+	}
+	a := &app{stdout: io.Discard, stderr: io.Discard, getenv: os.Getenv}
+
+	err := a.archiveSources(cfg, []string{"--apply"})
+	if err == nil {
+		t.Fatal("expected archive apply to require an allowlisted source vault")
+	}
+	if !strings.Contains(err.Error(), "non-allowlisted source vault source-account/SourceVault") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

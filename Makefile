@@ -2,28 +2,54 @@
 # Run `make help` for available targets
 
 .DEFAULT_GOAL := help
-.PHONY: help all build build-local install install-dot install-secrets-env run test test-v test-cover test-e2e test-e2e-fast test-e2e-deep \
-        test-e2e-capture test-e2e-verify test-e2e-record docs-check \
-        lint fmt vet check secrets deps clean install-tools doctor
+.PHONY: help
+.PHONY: all
+.PHONY: build
+.PHONY: build-all
+.PHONY: install
+.PHONY: install-dot
+.PHONY: install-senv
+.PHONY: run
+.PHONY: test
+.PHONY: test-v
+.PHONY: test-cover
+.PHONY: test-e2e
+.PHONY: test-e2e-fast
+.PHONY: test-e2e-deep
+.PHONY: test-e2e-capture
+.PHONY: test-e2e-verify
+.PHONY: test-e2e-record
+.PHONY: docs-check
+.PHONY: lint
+.PHONY: fmt
+.PHONY: vet
+.PHONY: check
+.PHONY: secrets
+.PHONY: deps
+.PHONY: clean
+.PHONY: install-tools
+.PHONY: doctor
 
 # Build info (injected at compile time)
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
-DATE    ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+COMMIT	?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
+DATE	?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS := -s -w -X 'github.com/dnery/dotstate/dot/internal/cli.version=$(VERSION)' \
-           -X 'github.com/dnery/dotstate/dot/internal/cli.commit=$(COMMIT)' \
-           -X 'github.com/dnery/dotstate/dot/internal/cli.date=$(DATE)'
+			X 'github.com/dnery/dotstate/dot/internal/cli.commit=$(COMMIT)' \
+			X 'github.com/dnery/dotstate/dot/internal/cli.date=$(DATE)'
 
-# Directories
-BIN_DIR     := bin
-COVER_DIR   := coverage
-CMD_DIR     := ./cmd/dot
-SECRETS_CMD_DIR := ./cmd/secrets-env
-INSTALL_DIR ?= $(HOME)/.local/bin
+# Directories and targets
+BIN_DIR			:= bin
+DOT_CMD			:= dot
+SENV_CMD		:= senv
+DOT_CMD_DIR		:= ./cmd/$(DOT_CMD)
+SENV_CMD_DIR 	:= ./cmd/$(SENV_CMD)
+INSTALL_DIR		?= $(HOME)/.local/bin
+COVER_DIR		:= coverage
 
 # Go settings
-GO          := go
-GOFLAGS     := -trimpath
+GO			:= go
+GOFLAGS		:= -trimpath
 CGO_ENABLED := 0
 
 # Colors for output
@@ -41,38 +67,43 @@ help: ## Display this help
 
 ##@ Development
 
-all: lint test build-local ## Run lint, test, and build
+all: lint test build
 
 run: ## Run the CLI (dev mode)
-	$(GO) run $(CMD_DIR) $(ARGS)
+	$(GO) run $(DOT_CMD_DIR) $(ARGS)
 
 run-verbose: ## Run the CLI with verbose output
-	$(GO) run $(CMD_DIR) --verbose $(ARGS)
+	$(GO) run $(DOT_CMD_DIR) --verbose $(ARGS)
 
 ##@ Building
 
-build-local: ## Build for current platform
-	CGO_ENABLED=$(CGO_ENABLED) $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/dot $(CMD_DIR)
-	CGO_ENABLED=$(CGO_ENABLED) $(GO) build $(GOFLAGS) -o $(BIN_DIR)/secrets-env $(SECRETS_CMD_DIR)
-
-install: install-dot ## Install dot to INSTALL_DIR (default: ~/.local/bin)
+install: install-dot install-senv ## Install all binaries to INSTALL_DIR (default: ~/.local/bin)
 
 install-dot: ## Install dot to INSTALL_DIR (default: ~/.local/bin)
 	@mkdir -p "$(INSTALL_DIR)"
-	CGO_ENABLED=$(CGO_ENABLED) $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o "$(INSTALL_DIR)/dot" $(CMD_DIR)
-	@echo "$(GREEN)Installed dot to $(INSTALL_DIR)/dot$(RESET)"
+	CGO_ENABLED=$(CGO_ENABLED) $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o "$(INSTALL_DIR)/$(DOT_CMD)" $(DOT_CMD_DIR)
+	@echo "$(GREEN)Installed dot to $(INSTALL_DIR)/$(DOT_CMD)$(RESET)"
 
-install-secrets-env: ## Install secrets-env to INSTALL_DIR (default: ~/.local/bin)
+install-senv: ## Install senv to INSTALL_DIR (default: ~/.local/bin)
 	@mkdir -p "$(INSTALL_DIR)"
-	CGO_ENABLED=$(CGO_ENABLED) $(GO) build $(GOFLAGS) -o "$(INSTALL_DIR)/secrets-env" $(SECRETS_CMD_DIR)
-	@echo "$(GREEN)Installed secrets-env to $(INSTALL_DIR)/secrets-env$(RESET)"
+	CGO_ENABLED=$(CGO_ENABLED) $(GO) build $(GOFLAGS) -o "$(INSTALL_DIR)/$(SENV_CMD)" $(SENV_CMD_DIR)
+	@echo "$(GREEN)Installed senv to $(INSTALL_DIR)/$(SENV_CMD)$(RESET)"
 
-build: ## Build for all platforms (linux, darwin, windows)
-	@mkdir -p $(BIN_DIR)/{linux,darwin,windows}
-	GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/linux/dot $(CMD_DIR)
-	GOOS=darwin  GOARCH=arm64 CGO_ENABLED=0 $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/darwin/dot $(CMD_DIR)
-	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/windows/dot.exe $(CMD_DIR)
+build: ## Build for current platform
+	CGO_ENABLED=$(CGO_ENABLED) $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(DOT_CMD) $(DOT_CMD_DIR)
+	CGO_ENABLED=$(CGO_ENABLED) $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(SENV_CMD) $(SENV_CMD_DIR)
 	@echo "$(GREEN)Built binaries in $(BIN_DIR)/$(RESET)"
+
+build-all: ## Build for all platforms (linux, darwin, windows)
+	@mkdir -p $(BIN_DIR)/{linux,darwin,windows}
+	GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/linux/$(DOT_CMD) $(DOT_CMD_DIR)
+	GOOS=darwin  GOARCH=arm64 CGO_ENABLED=0 $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/darwin/$(DOT_CMD) $(DOT_CMD_DIR)
+	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/windows/$(DOT_CMD).exe $(DOT_CMD_DIR)
+	GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/linux/$(SENV_CMD) $(SENV_CMD_DIR)
+	GOOS=darwin  GOARCH=arm64 CGO_ENABLED=0 $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/darwin/$(SENV_CMD) $(SENV_CMD_DIR)
+	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/windows/$(SENV_CMD).exe $(SENV_CMD_DIR)
+	@echo "$(GREEN)Built cross-platform binaries in $(BIN_DIR)/$(RESET)"
+
 
 ##@ Testing
 
@@ -93,22 +124,22 @@ test-short: ## Run short tests only (skip integration tests)
 	$(GO) test -race -shuffle=on -short ./...
 
 test-e2e: build-local ## Run discover harness for all scenarios
-	./test/e2e/discover_harness.sh --dot-bin ./bin/dot --scenario all
+	./test/e2e/discover_harness.sh --dot-bin ./bin/$(DOT_CMD) --scenario all
 
 test-e2e-fast: build-local ## Run discover harness fast scenario
-	./test/e2e/discover_harness.sh --dot-bin ./bin/dot --scenario discover-fast
+	./test/e2e/discover_harness.sh --dot-bin ./bin/$(DOT_CMD) --scenario discover-fast
 
 test-e2e-deep: build-local ## Run discover harness deep scenario
-	./test/e2e/discover_harness.sh --dot-bin ./bin/dot --scenario discover-deep
+	./test/e2e/discover_harness.sh --dot-bin ./bin/$(DOT_CMD) --scenario discover-deep
 
 test-e2e-capture: build-local ## Run discover harness capture-loop scenario
-	./test/e2e/discover_harness.sh --dot-bin ./bin/dot --scenario capture-loop
+	./test/e2e/discover_harness.sh --dot-bin ./bin/$(DOT_CMD) --scenario capture-loop
 
 test-e2e-verify: build-local ## Run macOS verification harness scenario
-	./test/e2e/discover_harness.sh --dot-bin ./bin/dot --scenario macos-verification
+	./test/e2e/discover_harness.sh --dot-bin ./bin/$(DOT_CMD) --scenario macos-verification
 
 test-e2e-record: build-local ## Run discover harness with asciinema recording (opt-in upload)
-	./test/e2e/discover_harness.sh --dot-bin ./bin/dot --scenario all --record
+	./test/e2e/discover_harness.sh --dot-bin ./bin/$(DOT_CMD) --scenario all --record
 
 docs-check: ## Validate documentation structure, pointers, and local links
 	./test/docs/docs_check.sh
@@ -156,12 +187,12 @@ deps-graph: ## Show dependency graph (requires graphviz)
 install-tools: ## Install development tools
 	@echo "$(CYAN)Installing development tools...$(RESET)"
 	$(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-	$(GO) install github.com/gitleaks/gitleaks/v8@latest
+	$(GO) install github.com/zricethezav/gitleaks/v8@latest
 	$(GO) install golang.org/x/tools/cmd/goimports@latest
 	@echo "$(GREEN)Tools installed$(RESET)"
 
 doctor: build-local ## Check prerequisites and run dot doctor
-	./$(BIN_DIR)/dot doctor
+	./$(BIN_DIR)/$(DOT_CMD) doctor
 
 ##@ Cleanup
 

@@ -359,14 +359,22 @@ func (m *subreposModule) Plan(ctx context.Context, operation modules.Operation) 
 		path := expandHome(entry.Path, m.home)
 		exists := fileExists(path)
 		isRepo := fileExists(filepath.Join(path, ".git"))
+		displayURL, safeRemote := subrepoRemoteSafety(entry.URL)
 		action := modules.ActionNoop
 		capabilities := []modules.Capability{modules.CapabilityReadOnly}
 		risk := modules.LowRisk(true)
 		var diagnostics []modules.Diagnostic
 		if !exists {
-			action = modules.ActionCreate
-			capabilities = []modules.Capability{modules.CapabilityAutoApply}
-			risk = modules.Risk{Level: modules.RiskMedium, Reasons: []string{"clone missing subrepo"}, RequiresConfirmation: false, Reversible: true}
+			if safeRemote {
+				action = modules.ActionCreate
+				capabilities = []modules.Capability{modules.CapabilityAutoApply}
+				risk = modules.Risk{Level: modules.RiskMedium, Reasons: []string{"clone missing subrepo"}, RequiresConfirmation: false, Reversible: true}
+			} else {
+				action = modules.ActionManual
+				capabilities = []modules.Capability{modules.CapabilityManual, modules.CapabilityDryRunOnly}
+				risk = modules.Risk{Level: modules.RiskHigh, Reasons: []string{"subrepo remote is empty or contains credentials"}, RequiresConfirmation: true, Reversible: false}
+				diagnostics = append(diagnostics, unsafeSubrepoRemoteDiagnostic(entry.Path))
+			}
 		} else if !isRepo {
 			action = modules.ActionManual
 			capabilities = []modules.Capability{modules.CapabilityManual}
@@ -374,7 +382,7 @@ func (m *subreposModule) Plan(ctx context.Context, operation modules.Operation) 
 		}
 		change := m.baseChange(operation, action, entry)
 		change.Current = map[string]any{"path": entry.Path, "exists": exists, "is_git_repo": isRepo}
-		change.Desired = map[string]any{"path": entry.Path, "url": entry.URL, "branch": entry.Branch}
+		change.Desired = map[string]any{"path": entry.Path, "url": displayURL, "branch": entry.Branch}
 		change.Capability = capabilities
 		change.Risk = risk
 		change.Diagnostics = diagnostics
@@ -401,12 +409,19 @@ func (m *subreposModule) Apply(ctx context.Context, changes []modules.Change, pl
 		url, _ := stringFromMap(change.Desired, "url")
 		pathRel, _ := stringFromMap(change.Desired, "path")
 		branch, _ := stringFromMap(change.Desired, "branch")
+		cloneURL, safeRemote := subrepoRemoteSafety(url)
+		if !safeRemote {
+			return results, nil, fmt.Errorf("refusing to clone subrepo %q with unsafe remote; redact credentials in state/subrepos.toml or clone manually", pathRel)
+		}
 		dest := expandHome(pathRel, m.home)
+		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+			return results, nil, fmt.Errorf("create subrepo parent dir: %w", err)
+		}
 		args := []string{"clone"}
 		if branch != "" {
 			args = append(args, "--branch", branch)
 		}
-		args = append(args, url, dest)
+		args = append(args, cloneURL, dest)
 		if _, err := m.r.Run(ctx, "", "git", args...); err != nil {
 			return results, nil, err
 		}
@@ -634,6 +649,25 @@ func manualApplyDiagnostic(surface, artifact string) modules.Diagnostic {
 	diag.Capability = []modules.Capability{modules.CapabilityDryRunOnly, modules.CapabilityManual}
 	diag.Remediation = "Review the artifact and apply it with the native manager until this module has backup/restore/idempotency coverage."
 	return diag
+}
+
+func unsafeSubrepoRemoteDiagnostic(path string) modules.Diagnostic {
+	diag := modules.NewDiagnostic(modules.SeverityWarning, "subrepos.remote_unsafe_for_auto_apply", "Subrepo remote is empty or contains credentials; clone is manual.", surfaceSubrepos, "subrepos:path/"+path)
+	diag.Capability = []modules.Capability{modules.CapabilityDryRunOnly, modules.CapabilityManual}
+	diag.Remediation = "Redact credentials from state/subrepos.toml and rerun dot apply, or clone the repository manually."
+	return diag
+}
+
+func subrepoRemoteSafety(raw string) (string, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", false
+	}
+	sanitized, redacted := discover.SanitizeGitRemoteURL(trimmed)
+	if redacted || strings.TrimSpace(sanitized) == "" {
+		return sanitized, false
+	}
+	return sanitized, true
 }
 
 func unsupportedStatePhase(surface string, phase modules.Phase) modules.Diagnostic {

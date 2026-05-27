@@ -86,7 +86,7 @@ func privacySafetyDiagnostics() []modules.Diagnostic {
 	)
 	keychain.Capability = []modules.Capability{modules.CapabilityManual, modules.CapabilityReadOnly}
 	keychain.Sensitivity = modules.SensitivityRestricted
-	keychain.Remediation = "Keep decrypted values out of dotstate output. Use op:// references or secrets-env cache metadata only."
+	keychain.Remediation = "Keep decrypted values out of dotstate output. Use op:// references or senv cache metadata only."
 	keychain.Risk = modules.Risk{Level: modules.RiskHigh, Reasons: []string{"decrypted Keychain values are secret material"}, RequiresConfirmation: true, Reversible: false}
 
 	mdm := modules.NewDiagnostic(

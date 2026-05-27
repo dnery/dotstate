@@ -667,7 +667,10 @@ func cmdSchedule(a *app) *cobra.Command {
 					return doterrors.Wrap(err, "resolve dot executable")
 				}
 			}
-			opts := schedule.OptionsFromConfig(cfg, dotBin)
+			opts, err := schedule.OptionsFromConfig(cfg, dotBin)
+			if err != nil {
+				return doterrors.Wrap(err, "build schedule options")
+			}
 			if interval > 0 {
 				opts.IntervalMinutes = interval
 			}

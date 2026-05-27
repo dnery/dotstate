@@ -266,12 +266,12 @@ Implementation note: the audit bridge includes a `macos.keychain.reference_only`
 
 - Current state sources:
   - `state/secrets/refs.toml` when present.
-  - `~/.config/dotstate/secrets-env.json` metadata.
+  - `~/.config/dotstate/senv.json` metadata.
   - 1Password CLI availability/lock status when checked safely.
-  - Generated cache file presence/mode/mtime from the `secrets-env` contract.
+  - Generated cache file presence/mode/mtime from the `senv` contract.
 - Desired artifact:
   - `state/secrets/refs.toml`
-  - Existing `secrets-env` config outside the repo for local shell cache behavior.
+  - Existing `senv` config outside the repo for local shell cache behavior.
 - Fact IDs:
   - `secrets:ref/op://vault/item/field`
   - `secrets:cache/sfr3`

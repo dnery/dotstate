@@ -1,8 +1,9 @@
 //go:build windows
 
-package secretsenv
+package senv
 
 import (
+	"fmt"
 	"os"
 	"syscall"
 	"unsafe"
@@ -39,9 +40,9 @@ func replaceFile(tmpName, path string) error {
 }
 
 func verifyCacheDirOwner(os.FileInfo) error {
-	return nil
+	return fmt.Errorf("windows cache ACL privacy verification is not implemented; refusing to write secret cache")
 }
 
 func cacheDirModeIsPrivate(os.FileInfo) bool {
-	return true
+	return false
 }
